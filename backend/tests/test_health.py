@@ -10,7 +10,6 @@ Run with:
     pytest tests/ -v --asyncio-mode=auto
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app

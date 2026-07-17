@@ -12,7 +12,7 @@ It intentionally requires no authentication so that infrastructure
 can poll it without credentials.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, status
 
@@ -69,6 +69,6 @@ async def health_check() -> HealthStatus:
         status=overall_status,
         version=settings.app_version,
         environment=settings.environment,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         components=components,
     )

@@ -1,17 +1,13 @@
 """
-ORM model stubs — implemented in Phase 3 when the database layer is added.
+ORM model registry — import all models here so Alembic autogenerate
+can discover every table defined in the application.
 
-Place SQLAlchemy (or other ORM) model classes here.
-Example structure (Phase 3):
-
-    from sqlalchemy import Column, String, DateTime
-    from sqlalchemy.dialects.postgresql import UUID
-    from app.models.base import Base
-
-    class Document(Base):
-        __tablename__ = "documents"
-
-        id         = Column(UUID, primary_key=True, default=uuid4)
-        title      = Column(String(512), nullable=False)
-        created_at = Column(DateTime(timezone=True), server_default=func.now())
+Usage (in alembic/env.py):
+    from app.models import *  # noqa: F401,F403
+    target_metadata = Base.metadata
 """
+
+from app.models.document import Document  # noqa: F401
+from app.models.user import User  # noqa: F401
+
+__all__ = ["User", "Document"]

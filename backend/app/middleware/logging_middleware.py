@@ -14,7 +14,7 @@ Log output example:
 
 import time
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response
 from loguru import logger
@@ -50,7 +50,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         # Log the incoming request.
         logger.info(
-            f"→ {request.method} {request.url.path}",
+            f"--> {request.method} {request.url.path}",
             extra={
                 "request_id": request_id,
                 "method": request.method,
@@ -74,7 +74,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             log_fn = logger.warning
 
         log_fn(
-            f"← {request.method} {request.url.path}  {response.status_code}  {elapsed_ms:.2f}ms",
+            f"<-- {request.method} {request.url.path}  {response.status_code}  {elapsed_ms:.2f}ms",
             extra={
                 "request_id": request_id,
                 "method": request.method,

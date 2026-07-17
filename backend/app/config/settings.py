@@ -42,7 +42,7 @@ class Settings(BaseSettings):
         description="Human-readable name of the application.",
     )
     app_version: str = Field(
-        default="0.1.0",
+        default="0.2.0",
         description="Semantic version string (major.minor.patch).",
     )
     app_description: str = Field(
@@ -126,16 +126,54 @@ class Settings(BaseSettings):
     )
 
     # -------------------------------------------------------------------------
-    # Security (stubs for Phase 2)
+    # Database (Phase 2)
+    # -------------------------------------------------------------------------
+    database_url: str = Field(
+        default="postgresql+asyncpg://raguser:ragpassword@localhost:5432/ragdb",
+        description="Async SQLAlchemy database connection string.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Security (Phase 2)
     # -------------------------------------------------------------------------
     secret_key: str = Field(
         default="change-me-in-production",
         description="Secret key for signing tokens. MUST be changed in production.",
     )
+    algorithm: str = Field(
+        default="HS256",
+        description="JWT signing algorithm. HS256 for symmetric, RS256 for asymmetric.",
+    )
     access_token_expire_minutes: int = Field(
         default=30,
         ge=1,
         description="JWT access token TTL in minutes.",
+    )
+    refresh_token_expire_days: int = Field(
+        default=7,
+        ge=1,
+        description="JWT refresh token TTL in days.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Phase 3: Document Management
+    # -------------------------------------------------------------------------
+    max_upload_size_mb: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum file upload size limit in Megabytes.",
+    )
+    storage_dir: str = Field(
+        default="storage",
+        description="Path to local document storage folder.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Phase 4: Asynchronous Processing
+    # -------------------------------------------------------------------------
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis connection URL for Celery message broker.",
     )
 
     # -------------------------------------------------------------------------

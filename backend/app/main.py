@@ -19,8 +19,8 @@ Usage:
     uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from loguru import logger
@@ -30,9 +30,9 @@ from app.config.config import API_CONTACT, API_LICENSE, API_TITLE, TAGS_METADATA
 from app.config.settings import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
+from app.db.session import dispose_engine, verify_database_connection
 from app.middleware.cors import add_cors_middleware
 from app.middleware.logging_middleware import RequestLoggingMiddleware
-
 
 # =============================================================================
 # Lifespan Context Manager
@@ -49,25 +49,36 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # ── Startup ───────────────────────────────────────────────────────────────
     logger.info(
-        f"🚀 Starting {settings.app_name} v{settings.app_version}",
+        f"[START] Starting {settings.app_name} v{settings.app_version}",
         extra={"environment": settings.environment, "debug": settings.debug},
     )
 
-    # Phase 3: Initialise database connection pool here.
+    # Phase 2: Verify database connectivity.
+    await verify_database_connection()
+
+    # Ensure Phase 3 local storage directories exist.
+    import os
+    for folder in ["uploads", "processed", "failed", "temp"]:
+        path = os.path.join(settings.storage_dir, folder)
+        os.makedirs(path, exist_ok=True)
+    logger.info("[OK] Document storage directories verified.")
+
     # Phase 3: Initialise Redis connection pool here.
     # Phase 4: Warm up vector store / LLM client here.
 
-    logger.info("✅ Application startup complete. Ready to serve traffic.")
+    logger.info("[OK] Application startup complete. Ready to serve traffic.")
 
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
-    logger.info("🛑 Shutting down application …")
+    logger.info("[STOP] Shutting down application ...")
 
-    # Phase 3: Close database connection pool here.
+    # Phase 2: Dispose the database connection pool.
+    await dispose_engine()
+
     # Phase 3: Close Redis connection pool here.
 
-    logger.info("✅ Application shutdown complete.")
+    logger.info("[OK] Application shutdown complete.")
 
 
 # =============================================================================

@@ -8,7 +8,7 @@ it trivial to generate accurate OpenAPI documentation.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
@@ -57,7 +57,7 @@ class HealthStatus(BaseResponse):
     version: str = Field(..., description="Current application version.", examples=["0.1.0"])
     environment: str = Field(..., description="Deployment environment.", examples=["development"])
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="UTC timestamp of the health-check response.",
     )
     components: dict[str, str] = Field(
@@ -116,7 +116,7 @@ class PaginatedResponse(BaseResponse, Generic[T]):
         total: int,
         page: int,
         page_size: int,
-    ) -> "PaginatedResponse[T]":
+    ) -> PaginatedResponse[T]:
         """Factory method to build a paginated response without manual math."""
         import math
         return cls(

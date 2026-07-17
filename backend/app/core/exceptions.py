@@ -22,7 +22,6 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-
 # =============================================================================
 # Base Exception
 # =============================================================================

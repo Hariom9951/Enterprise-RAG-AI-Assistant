@@ -205,3 +205,20 @@ secrets/
 *.seed
 *.pid.lock
 lib-cov/
+
+# -----------------------------------------------------------------------------
+# Project-specific
+# -----------------------------------------------------------------------------
+# Uploaded file storage (generated at runtime — not source code)
+backend/storage/
+
+# SQLite local dev database
+*.db
+*.sqlite
+*.sqlite3
+
+# Alembic compiled artifacts (keep migrations, ignore runtime cache)
+backend/alembic/__pycache__/
+
+# Tasks package init (auto-generated)
+backend/app/tasks/__init__.py

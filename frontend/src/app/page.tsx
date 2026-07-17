@@ -168,7 +168,7 @@ export default function HomePage() {
 
         {/* Sub-headline */}
         <p className="text-lg md:text-xl text-white/50 max-w-2xl mb-4 leading-relaxed">
-          Ask questions against your company's knowledge base.
+          Ask questions against your company&apos;s knowledge base.
           Get grounded, cited answers powered by Retrieval-Augmented Generation.
         </p>
 
@@ -301,10 +301,10 @@ export default function HomePage() {
                 <span className="text-green-400">FastAPI :8000</span>
               </div>
               <div className="pl-4 text-white/20">
-                └─ GET /api/v1/&nbsp;&nbsp;&nbsp;&nbsp;→ 200 &#123;"message": "..."&#125;
+                └─ GET /api/v1/&nbsp;&nbsp;&nbsp;&nbsp;→ 200 &#123;&quot;message&quot;: &quot;...&quot;&#125;
               </div>
               <div className="pl-4 text-white/20">
-                └─ GET /api/v1/health → 200 &#123;"status": "healthy"&#125;
+                └─ GET /api/v1/health → 200 &#123;&quot;status&quot;: &quot;healthy&quot;&#125;
               </div>
               <div className="pl-4 text-white/20">
                 └─ GET /docs &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ Swagger UI

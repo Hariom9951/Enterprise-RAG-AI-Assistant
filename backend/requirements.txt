@@ -29,8 +29,23 @@ httpx==0.28.1
 # -----------------------------------------------------------------------------
 # Middleware & Security
 # -----------------------------------------------------------------------------
-python-multipart==0.0.20           # Form data support
+python-multipart==0.0.20           # Form data & file upload support
 starlette==0.41.3                  # FastAPI's underlying ASGI framework
+
+# -----------------------------------------------------------------------------
+# Phase 2: Database
+# -----------------------------------------------------------------------------
+sqlalchemy==2.0.36                 # Async ORM (SQLAlchemy 2.0 style)
+asyncpg==0.30.0                    # Async PostgreSQL driver
+alembic==1.14.0                    # Database migration tool
+
+# -----------------------------------------------------------------------------
+# Phase 2: Authentication & Security
+# -----------------------------------------------------------------------------
+python-jose[cryptography]==3.3.0   # JWT signing & verification (HS256/RS256)
+passlib[bcrypt]==1.7.4             # Password hashing abstraction
+bcrypt==4.2.1                      # bcrypt backend for passlib
+email-validator==2.2.0             # RFC-compliant email validation for Pydantic
 
 # -----------------------------------------------------------------------------
 # Testing
@@ -38,12 +53,18 @@ starlette==0.41.3                  # FastAPI's underlying ASGI framework
 pytest==8.3.4
 pytest-asyncio==0.24.0
 anyio==4.7.0
+aiosqlite==0.20.0                  # Async SQLite for in-memory test DB (no Postgres needed in CI)
 
 # -----------------------------------------------------------------------------
 # Code Quality (dev)
 # -----------------------------------------------------------------------------
-# These are listed here so CI can install them in a single step.
-# In production images, install with: pip install --no-deps -r requirements.txt
-# and skip the block below via a requirements-prod.txt split if desired.
 ruff==0.8.4                        # Linter + formatter
 mypy==1.13.0                       # Static type checker
+black==24.10.0                     # Opinionated code formatter
+pre-commit==4.0.1                  # Git hook manager
+
+# -----------------------------------------------------------------------------
+# Phase 4: Asynchronous Processing
+# -----------------------------------------------------------------------------
+celery==5.4.0                      # Asynchronous task runner
+redis==5.2.1                       # Redis broker client

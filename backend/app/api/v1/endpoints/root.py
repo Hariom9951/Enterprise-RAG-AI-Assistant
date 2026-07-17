@@ -4,8 +4,7 @@ Enterprise RAG AI Assistant — API v1 Endpoints: Root
 GET /  →  {"message": "Enterprise RAG AI Assistant API"}
 """
 
-from fastapi import APIRouter
-from fastapi import status
+from fastapi import APIRouter, status
 
 from app.schemas.common import MessageResponse
 

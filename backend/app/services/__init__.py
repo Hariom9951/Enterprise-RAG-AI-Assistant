@@ -1,21 +1,23 @@
 """
-Service layer stubs — implemented in Phase 4 when RAG features are added.
+Services package — business logic layer.
 
-Services encapsulate business logic and coordinate between:
-  - API endpoints (presentation layer)
-  - Repositories / ORM models (data layer)
-  - External providers (LLM, vector store, etc.)
-
-Example structure (Phase 4):
-
-    class DocumentService:
-        def __init__(self, db: AsyncSession, vector_store: VectorStore):
-            self.db = db
-            self.vector_store = vector_store
-
-        async def ingest(self, file: UploadFile) -> Document:
-            ...
-
-        async def search(self, query: str, top_k: int = 5) -> list[Chunk]:
-            ...
+Phase 2 services:
+  - auth_service: registration, login, token refresh
+  - user_service: user CRUD operations
 """
+
+from app.services.auth_service import (
+    authenticate_user,
+    refresh_access_token,
+    register_user,
+)
+from app.services.user_service import create_user, get_user_by_email, get_user_by_id
+
+__all__ = [
+    "register_user",
+    "authenticate_user",
+    "refresh_access_token",
+    "get_user_by_id",
+    "get_user_by_email",
+    "create_user",
+]

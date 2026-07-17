@@ -1,0 +1,61 @@
+# =============================================================================
+# Backend Developer Tooling Configuration — Black, Ruff, Mypy
+# =============================================================================
+
+# ── Black Configuration ──────────────────────────────────────────────────────
+[tool.black]
+line-length = 88
+target-version = ['py312']
+include = '\.pyi?$'
+exclude = '''
+(
+  /(
+      \.eggs
+    | \.git
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+    | alembic
+  )/
+)
+'''
+
+# ── Ruff Configuration ───────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "C90", # mccabe complexity
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = ["E501", "N818", "N806", "B008"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+# ── Mypy Configuration ───────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+ignore_missing_imports = true
+exclude = [
+    "^alembic/",
+    "^tests/"
+]

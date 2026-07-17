@@ -45,8 +45,16 @@ TAGS_METADATA: Final[list[dict]] = [
         "name": "root",
         "description": "Root informational endpoints.",
     },
-    # Phase 2 stubs — uncomment as features are implemented:
-    # {"name": "auth",      "description": "Authentication & authorisation."},
+    # ── Phase 2: Authentication ───────────────────────────────────────────────
+    {
+        "name": "auth",
+        "description": "User registration, login, and JWT token management.",
+    },
+    {
+        "name": "users",
+        "description": "Authenticated user profile management.",
+    },
+    # Phase 4 stubs:
     # {"name": "documents", "description": "Document ingestion and management."},
     # {"name": "chat",      "description": "Conversational RAG interface."},
     # {"name": "search",    "description": "Semantic search over the knowledge base."},
@@ -91,4 +99,4 @@ class FeatureFlags:
     ENABLE_SEMANTIC_SEARCH: bool = False
 
     #: Enable user authentication middleware.
-    ENABLE_AUTH: bool = False
+    ENABLE_AUTH: bool = True   # ✅ Activated in Phase 2

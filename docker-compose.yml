@@ -4,6 +4,7 @@
 # Orchestrates the full application stack:
 #   - backend:  FastAPI + Uvicorn (Python 3.12)
 #   - frontend: Next.js 15 (Node.js)
+#   - postgres: PostgreSQL 16 with pgvector extension
 #
 # Usage:
 #   docker-compose up --build          # Start all services
@@ -28,11 +29,35 @@ networks:
 volumes:
   backend_logs:
     name: rag_backend_logs
+  postgres_data:
+    name: rag_postgres_data
 
 # =============================================================================
 # Services
 # =============================================================================
 services:
+
+  # ── PostgreSQL with pgvector ────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: rag_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ragpassword}
+      POSTGRES_DB: ragdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rag_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raguser -d ragdb"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
 
   # ── Backend (FastAPI) ───────────────────────────────────────────────────────
   backend:
@@ -45,7 +70,7 @@ services:
     environment:
       # Application
       APP_NAME: "Enterprise RAG AI Assistant"
-      APP_VERSION: "0.1.0"
+      APP_VERSION: "0.2.0"
       ENVIRONMENT: development
       DEBUG: "false"
 
@@ -63,28 +88,40 @@ services:
       ALLOWED_ORIGINS: "http://localhost:3000,http://frontend:3000"
       ALLOW_CREDENTIALS: "true"
 
-      # Logging — JSON format in Docker for log aggregators (e.g. Fluentd, Loki)
+      # Logging — JSON format in Docker for log aggregators
       LOG_LEVEL: INFO
       LOG_FORMAT: json
       LOG_FILE_PATH: /app/logs/app.log
 
-      # Security — override with a real secret in production!
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      # Phase 2: Database
+      DATABASE_URL: "postgresql+asyncpg://raguser:${DB_PASSWORD:-ragpassword}@postgres:5432/ragdb"
+
+      # Phase 4: Redis connection
+      REDIS_URL: "redis://redis:6379/0"
+
+      # Phase 2: Security — CHANGE in production!
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-generate-with-openssl}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      REFRESH_TOKEN_EXPIRE_DAYS: "7"
 
     ports:
       - "8000:8000"
     volumes:
       - backend_logs:/app/logs
-      # Hot-reload in development: mount source code as a volume.
-      # Remove this in production builds.
       - ./backend:/app:delegated
     networks:
       - rag_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
-      start_period: 15s
+      start_period: 20s
       retries: 3
 
   # ── Frontend (Next.js) ──────────────────────────────────────────────────────
@@ -95,9 +132,7 @@ services:
     container_name: rag_frontend
     restart: unless-stopped
     environment:
-      # The browser calls this URL — must be the host-accessible backend URL.
       NEXT_PUBLIC_API_URL: "http://localhost:8000/api/v1"
-      # Server-side Next.js calls this internal Docker network URL.
       API_INTERNAL_URL: "http://backend:8000/api/v1"
       NODE_ENV: development
     ports:
@@ -108,29 +143,45 @@ services:
       backend:
         condition: service_healthy
 
-  # ── Future Services (Phase 3+) ──────────────────────────────────────────────
-  # Uncomment when implementing the database layer.
+  # ── Redis (Message Broker) ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: rag_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - rag_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # postgres:
-  #   image: pgvector/pgvector:pg16
-  #   container_name: rag_postgres
-  #   restart: unless-stopped
-  #   environment:
-  #     POSTGRES_USER: raguser
-  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
-  #     POSTGRES_DB: ragdb
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   networks:
-  #     - rag_network
-
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: rag_redis
-  #   restart: unless-stopped
-  #   ports:
-  #     - "6379:6379"
-  #   networks:
-  #     - rag_network
+  # ── Celery Worker ───────────────────────────────────────────────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: rag_celery_worker
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    environment:
+      APP_NAME: "Enterprise RAG AI Assistant - Worker"
+      ENVIRONMENT: development
+      DEBUG: "false"
+      REDIS_URL: "redis://redis:6379/0"
+      DATABASE_URL: "postgresql+asyncpg://raguser:${DB_PASSWORD:-ragpassword}@postgres:5432/ragdb"
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-generate-with-openssl}
+      ALGORITHM: HS256
+      STORAGE_DIR: "storage"
+    volumes:
+      - ./backend:/app:delegated
+    networks:
+      - rag_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

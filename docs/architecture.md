@@ -1,127 +1,163 @@
-# Enterprise RAG AI Assistant — Architecture Documentation
+# Architectural Blueprint — Enterprise RAG AI Assistant
 
-## System Overview
-
-The Enterprise RAG AI Assistant is a production-grade, API-first application
-that will enable users to upload enterprise documents and query them conversationally
-using Retrieval-Augmented Generation (RAG).
+This document outlines the system architecture, authentication flows, data layers, and future engineering designs for the Enterprise RAG AI Assistant.
 
 ---
 
-## Phase 1 Architecture (Current)
+## 1. System Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Docker Network                           │
-│                                                                 │
-│  ┌──────────────────┐          ┌──────────────────────────┐    │
-│  │   Frontend       │          │       Backend            │    │
-│  │   Next.js 15     │─────────▶│  FastAPI + Uvicorn       │    │
-│  │   Port: 3000     │  HTTP    │  Port: 8000              │    │
-│  └──────────────────┘          └──────────────────────────┘    │
-│                                        │                        │
-│                                        │ /api/v1/               │
-│                                        │ /api/v1/health         │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+The application is structured as a decoupled, multi-tier system designed to support secure access and low-latency document processing:
+
+```mermaid
+graph TD
+    Client[Next.js Client :3000] -->|HTTP / API v1| Nginx[Nginx Reverse Proxy :80]
+    Nginx -->|Route Request| FastAPI[FastAPI Backend :8000]
+    FastAPI -->|Queries| Postgres[(PostgreSQL DB :5432)]
+    FastAPI -->|Caching / Session| Redis[(Redis Cache :6379)]
+    FastAPI -->|Semantic Search| VectorDB[(PGVector Store)]
+    FastAPI -->|API Calls| LLM[LLM Provider API / OpenAI / Anthropic]
 ```
 
 ---
 
-## Backend Layers
+## 2. Backend Architecture
 
-```
-app/
-├── api/              ← Presentation layer (HTTP endpoints)
-│   └── v1/
-│       ├── router.py              # Route aggregator
-│       └── endpoints/
-│           ├── root.py            # GET /
-│           └── health.py          # GET /health
-│
-├── config/           ← Configuration layer
-│   ├── settings.py                # Pydantic-settings (env vars)
-│   └── config.py                  # Constants & feature flags
-│
-├── core/             ← Cross-cutting concerns
-│   ├── logging.py                 # Loguru configuration
-│   └── exceptions.py              # Exception hierarchy & handlers
-│
-├── middleware/       ← ASGI middleware
-│   ├── cors.py                    # CORS policy
-│   └── logging_middleware.py      # Request/response logging
-│
-├── schemas/          ← Pydantic I/O schemas (API contract)
-│   └── common.py                  # Shared response models
-│
-├── models/           ← ORM models (Phase 3)
-├── services/         ← Business logic (Phase 4)
-├── utils/            ← Shared helpers
-├── dependencies/     ← FastAPI DI registry
-└── main.py           ← Application factory + lifespan
+The backend is built with FastAPI following a clean service-oriented architecture:
+
+```mermaid
+sequenceDiagram
+    participant User as Client
+    participant Main as app/main.py
+    participant Route as api/v1/endpoints
+    participant Dep as app/dependencies
+    participant Serv as app/services
+    participant Model as app/models
+    participant DB as Database (SQLAlchemy)
+
+    User->>Main: HTTP Request
+    Main->>Dep: Resolve Dependant Injections
+    Dep->>DB: get_db() / Current User Verification
+    DB-->>Dep: Session / User Record
+    Dep-->>Route: Inject Context
+    Route->>Serv: Call Business Logic
+    Serv->>Model: CRUD Operations
+    Model->>DB: Execute Query
+    DB-->>Serv: Database Result
+    Serv-->>Route: Return Service Model
+    Route-->>User: Pydantic Serialised Response (JSON)
 ```
 
 ---
 
-## Planned Architecture (Phase 4 — Full RAG)
+## 3. Frontend Architecture
 
-```
-┌───────────────────────────────────────────────────────────────────────┐
-│                           Docker Network                              │
-│                                                                       │
-│  ┌─────────────┐   ┌──────────────────┐   ┌────────────────────┐    │
-│  │  Next.js    │   │   FastAPI         │   │  PostgreSQL +      │    │
-│  │  Frontend   │──▶│   Backend         │──▶│  pgvector          │    │
-│  │  Port: 3000 │   │   Port: 8000      │   │  Port: 5432        │    │
-│  └─────────────┘   └──────────────────┘   └────────────────────┘    │
-│                            │                                          │
-│                     ┌──────┴──────┐                                  │
-│                     │             │                                   │
-│               ┌─────▼────┐  ┌────▼─────┐                            │
-│               │  Redis    │  │  LLM API │                            │
-│               │  Cache    │  │ (OpenAI) │                            │
-│               │  6379     │  │ External │                            │
-│               └──────────┘  └──────────┘                            │
-└───────────────────────────────────────────────────────────────────────┘
+The frontend uses Next.js 15 App Router, TypeScript, and Tailwind CSS.
+- **Route Groups:** Auth views are grouped under `(auth)/` to share layout decorators and gradients.
+- **API Client:** Centrally structured client (`lib/api.ts`) managing automatic bearer token injection and routing redirects to `/login` upon HTTP `401 Unauthorized` responses.
+- **State Management:** Uses React 19 hooks and local state for modular form controls, relying on local storage cache configurations for JWT pairs.
+
+---
+
+## 4. Authentication Flow
+
+Authentication is stateless and uses JWT (JSON Web Tokens) with a secure **Token Rotation** mechanism to mitigate token replay attacks:
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant AuthAPI as POST /auth/login
+    participant UserSvc as User Service
+    participant JWT as security.py
+    
+    Client->>AuthAPI: Send Credentials (email, password)
+    AuthAPI->>UserSvc: Fetch user and verify bcrypt hash
+    UserSvc-->>AuthAPI: User record (active=true)
+    AuthAPI->>JWT: Generate JWT Token pair
+    JWT-->>AuthAPI: return access_token (30m) & refresh_token (7d)
+    AuthAPI-->>Client: HTTP 200 with tokens
+    
+    Note over Client, JWT: Token Expiration & Rotation
+    
+    Client->>AuthAPI: POST /auth/refresh (send refresh_token)
+    AuthAPI->>JWT: Verify refresh signature & claim
+    JWT-->>AuthAPI: Valid token payload
+    AuthAPI->>UserSvc: Load user profile
+    UserSvc-->>AuthAPI: User record (active=true)
+    AuthAPI->>JWT: Generate NEW Access + NEW Refresh tokens (rotation)
+    JWT-->>AuthAPI: return new token pair
+    AuthAPI-->>Client: HTTP 200 with rotated tokens
 ```
 
 ---
 
-## Architectural Decisions (ADRs)
+## 5. Database Layer
 
-### ADR-001: FastAPI over Django/Flask
-**Decision**: Use FastAPI for the backend.
-**Rationale**: Async-native, automatic OpenAPI generation, Pydantic integration,
-high throughput for AI workloads.
-
-### ADR-002: Pydantic Settings for Configuration
-**Decision**: All configuration via `pydantic-settings` loaded from env vars.
-**Rationale**: Type-safe, validated at startup, works seamlessly with Docker
-env injection and Kubernetes ConfigMaps/Secrets.
-
-### ADR-003: API Versioning from Day One
-**Decision**: All endpoints prefixed with `/api/v1/`.
-**Rationale**: Enables non-breaking evolution — a `/api/v2/` can be introduced
-without disrupting existing integrations.
-
-### ADR-004: Loguru over stdlib logging
-**Decision**: Loguru as the sole logging backend with a stdlib bridge.
-**Rationale**: Structured JSON output, automatic log rotation, cleaner API,
-and a single configuration point.
-
-### ADR-005: Multi-stage Docker builds
-**Decision**: Separate builder and runtime Docker stages.
-**Rationale**: Smaller runtime images, no build tools in production,
-reduced attack surface.
+- **SQLAlchemy 2.0 Async:** The database driver utilizes asynchronous connection factories (`async_sessionmaker[AsyncSession]`) to avoid blocking thread pools.
+- **Native Types:** Restores native PostgreSQL types like `Uuid` and `Enum` for optimum index mapping, while abstracting fallbacks via SQLAlchemy column conversions on SQLite when executing tests.
+- **Lifespan Integration:** Connection engine pool initialization is verified on startup and fully disposed on shutdown inside FastAPI's lifespan configuration.
 
 ---
 
-## Roadmap
+## 6. Service Layer
 
-| Phase | Feature | Status |
-|-------|---------|--------|
-| 1 | Project foundation, FastAPI skeleton, Next.js shell | ✅ Complete |
-| 2 | Authentication (JWT), user management | 🔜 Planned |
-| 3 | Database layer (PostgreSQL + pgvector), Redis cache | 🔜 Planned |
-| 4 | Document ingestion, vector embeddings, RAG pipeline | 🔜 Planned |
-| 5 | Production deployment (nginx, CI/CD, monitoring) | 🔜 Planned |
+The service layer contains the pure functional computations and CRUD queries of the system.
+- **Separation of Concerns:** Route handlers are lightweight and perform request deserialization, dependency resolution, and response styling.
+- **Transaction boundary:** Services flush data to the database session but do **NOT** commit it. Database session transactions are managed by the session generator middleware (`get_db`) to guarantee rollback safety across the request lifecycle.
+
+---
+
+## 7. Future RAG Ingestion & Query Pipeline (Phase 4)
+
+```mermaid
+flowchart TD
+    subgraph Ingestion Pipeline
+        Doc[Upload PDF/Doc] --> Parse[Document Parser]
+        Parse --> Chunk[Text Chunking / Recursive Character]
+        Chunk --> Embed[Embedding Generator / OpenAI]
+        Embed --> Store[PGVector DB Store]
+    end
+
+    subgraph Query Pipeline
+        Query[User Question] --> QueryEmbed[Question Embedding]
+        QueryEmbed --> Search[Semantic Vector Similarity Search]
+        Store -->|Similar Chunks| Search
+        Search --> Prompt[Formulate Prompt Context]
+        Prompt --> LLMCall[LLM Inference]
+        LLMCall --> Response[Grounded Answer with Citations]
+    end
+```
+
+---
+
+## 8. Future AI Agent Architecture (Phase 4+)
+
+For complex searches, the system will leverage a tool-calling AI agent loop:
+
+```mermaid
+stateDiagram-v2
+    [*] --> InputQuery
+    InputQuery --> EvaluateTask: Agent evaluates request
+    EvaluateTask --> NeedTool: Requires facts/documents?
+    NeedTool --> CallVectorDB: Query PGVector similarity tool
+    CallVectorDB --> FeedContext: Returns text passages
+    FeedContext --> EvaluateTask
+    NeedTool --> DirectAnswer: Direct answer possible
+    DirectAnswer --> [*]
+```
+
+---
+
+## 9. Deployment Architecture
+
+For scaling, Nginx load balances traffic across multiple stateless Docker backend nodes:
+
+```mermaid
+graph LR
+    User[Web Client] -->|HTTPS| Nginx[Nginx SSL / Proxy]
+    Nginx --> Backend1[FastAPI Node 1]
+    Nginx --> Backend2[FastAPI Node 2]
+    Backend1 --> DB[(PostgreSQL / PgVector)]
+    Backend2 --> DB
+    Backend1 --> Cache[(Redis Cache)]
+    Backend2 --> Cache
+```
