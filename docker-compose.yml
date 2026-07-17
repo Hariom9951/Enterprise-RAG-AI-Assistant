@@ -1,0 +1,136 @@
+# =============================================================================
+# Enterprise RAG AI Assistant — Docker Compose
+# =============================================================================
+# Orchestrates the full application stack:
+#   - backend:  FastAPI + Uvicorn (Python 3.12)
+#   - frontend: Next.js 15 (Node.js)
+#
+# Usage:
+#   docker-compose up --build          # Start all services
+#   docker-compose up --build backend  # Start backend only
+#   docker-compose down                # Stop and remove containers
+#   docker-compose logs -f backend     # Stream backend logs
+# =============================================================================
+
+version: "3.9"
+
+# =============================================================================
+# Shared Networks
+# =============================================================================
+networks:
+  rag_network:
+    driver: bridge
+    name: rag_network
+
+# =============================================================================
+# Shared Volumes
+# =============================================================================
+volumes:
+  backend_logs:
+    name: rag_backend_logs
+
+# =============================================================================
+# Services
+# =============================================================================
+services:
+
+  # ── Backend (FastAPI) ───────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: rag_backend
+    restart: unless-stopped
+    environment:
+      # Application
+      APP_NAME: "Enterprise RAG AI Assistant"
+      APP_VERSION: "0.1.0"
+      ENVIRONMENT: development
+      DEBUG: "false"
+
+      # Server
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      WORKERS: "1"
+
+      # API
+      API_V1_PREFIX: /api/v1
+      DOCS_URL: /docs
+      REDOC_URL: /redoc
+
+      # CORS — allow requests from the frontend container
+      ALLOWED_ORIGINS: "http://localhost:3000,http://frontend:3000"
+      ALLOW_CREDENTIALS: "true"
+
+      # Logging — JSON format in Docker for log aggregators (e.g. Fluentd, Loki)
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+      LOG_FILE_PATH: /app/logs/app.log
+
+      # Security — override with a real secret in production!
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_logs:/app/logs
+      # Hot-reload in development: mount source code as a volume.
+      # Remove this in production builds.
+      - ./backend:/app:delegated
+    networks:
+      - rag_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # ── Frontend (Next.js) ──────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rag_frontend
+    restart: unless-stopped
+    environment:
+      # The browser calls this URL — must be the host-accessible backend URL.
+      NEXT_PUBLIC_API_URL: "http://localhost:8000/api/v1"
+      # Server-side Next.js calls this internal Docker network URL.
+      API_INTERNAL_URL: "http://backend:8000/api/v1"
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    networks:
+      - rag_network
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ── Future Services (Phase 3+) ──────────────────────────────────────────────
+  # Uncomment when implementing the database layer.
+
+  # postgres:
+  #   image: pgvector/pgvector:pg16
+  #   container_name: rag_postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: raguser
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+  #     POSTGRES_DB: ragdb
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - rag_network
+
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: rag_redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - rag_network

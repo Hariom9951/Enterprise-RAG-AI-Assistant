@@ -1,0 +1,49 @@
+# =============================================================================
+# Enterprise RAG AI Assistant — Backend Dependencies
+# =============================================================================
+# Pin exact versions for reproducible builds in production.
+# Run: pip install -r requirements.txt
+
+# -----------------------------------------------------------------------------
+# Core Web Framework
+# -----------------------------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.32.1          # ASGI server with uvloop + httptools
+
+# -----------------------------------------------------------------------------
+# Configuration & Environment
+# -----------------------------------------------------------------------------
+pydantic-settings==2.7.0           # Typed settings from env vars
+python-dotenv==1.0.1               # .env file loader
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+loguru==0.7.3                      # Structured, beautiful logging
+
+# -----------------------------------------------------------------------------
+# HTTP Client (for health-checks & future integrations)
+# -----------------------------------------------------------------------------
+httpx==0.28.1
+
+# -----------------------------------------------------------------------------
+# Middleware & Security
+# -----------------------------------------------------------------------------
+python-multipart==0.0.20           # Form data support
+starlette==0.41.3                  # FastAPI's underlying ASGI framework
+
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+pytest==8.3.4
+pytest-asyncio==0.24.0
+anyio==4.7.0
+
+# -----------------------------------------------------------------------------
+# Code Quality (dev)
+# -----------------------------------------------------------------------------
+# These are listed here so CI can install them in a single step.
+# In production images, install with: pip install --no-deps -r requirements.txt
+# and skip the block below via a requirements-prod.txt split if desired.
+ruff==0.8.4                        # Linter + formatter
+mypy==1.13.0                       # Static type checker
