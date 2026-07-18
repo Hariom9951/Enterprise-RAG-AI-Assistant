@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import pgvector
 import sqlalchemy as sa
 
 from alembic import op
-import pgvector
 
 # revision identifiers, used by Alembic.
 revision: str = '433ba6730bf1'

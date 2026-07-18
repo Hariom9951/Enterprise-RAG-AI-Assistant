@@ -17,10 +17,11 @@ from __future__ import annotations
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from alembic import context
 
 # =============================================================================
 # Alembic Config Object
@@ -37,8 +38,8 @@ if config.config_file_name is not None:
 # Model Registration — MUST import all models before autogenerate
 # =============================================================================
 # The wildcard import ensures every model class is registered with Base.metadata.
-from app.db.base import Base       # noqa: E402 — must come after sys.path setup
-from app.models import *           # noqa: F401,F403,E402
+from app.db.base import Base  # noqa: E402 — must come after sys.path setup
+from app.models import *  # noqa: F401,F403,E402
 
 target_metadata = Base.metadata
 

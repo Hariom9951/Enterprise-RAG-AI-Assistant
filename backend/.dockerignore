@@ -1,0 +1,35 @@
+# Ignore virtual environments
+venv/
+.venv/
+env/
+
+# Ignore databases and sqlite files
+*.db
+*.db-journal
+
+# Ignore local storage and logs
+storage/
+logs/
+temp/
+uploads/
+processed/
+failed/
+
+# Ignore cache directories
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Ignore git
+.git/
+.github/
+
+# Ignore local config files
+.env
+.env.production
+.env.development
+.env.staging

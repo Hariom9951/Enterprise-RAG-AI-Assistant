@@ -170,7 +170,9 @@ services:
       target: runtime
     container_name: rag_celery_beat
     restart: unless-stopped
-    command: celery -A app.tasks.celery_app beat --loglevel=info
+    healthcheck:
+      disable: true
+    command: celery -A app.tasks.celery_app beat --loglevel=info -s /tmp/celerybeat-schedule
     environment:
       APP_NAME: "Enterprise RAG AI Assistant - Beat"
       ENVIRONMENT: production

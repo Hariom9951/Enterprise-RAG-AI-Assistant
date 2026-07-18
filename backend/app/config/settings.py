@@ -92,15 +92,15 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # CORS
     # -------------------------------------------------------------------------
-    allowed_origins: list[str] = Field(
+    allowed_origins: str | list[str] = Field(
         default=["http://localhost:3000", "http://127.0.0.1:3000"],
         description="List of allowed CORS origins.",
     )
-    allowed_methods: list[str] = Field(
+    allowed_methods: str | list[str] = Field(
         default=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         description="Allowed HTTP methods for CORS.",
     )
-    allowed_headers: list[str] = Field(
+    allowed_headers: str | list[str] = Field(
         default=["*"],
         description="Allowed HTTP headers for CORS.",
     )

@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
-from alembic import op
 import pgvector.sqlalchemy
+import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '51f133e6de2a'
@@ -34,7 +35,7 @@ def upgrade() -> None:
     op.add_column('chunks', sa.Column('embedding_version', sa.String(length=50), nullable=True, comment='Version of the embedding pipeline.'))
     op.add_column('chunks', sa.Column('embedded_at', sa.DateTime(timezone=True), nullable=True, comment='Timestamp when the embedding was generated.'))
     op.add_column('chunks', sa.Column('embedding_duration_ms', sa.Integer(), nullable=True, comment='Duration of embedding generation in milliseconds.'))
-    
+
     # 3. Create pgvector index only on PostgreSQL
     if is_postgres:
         op.create_index('ix_chunks_embedding', 'chunks', ['embedding'], unique=False, postgresql_using='hnsw', postgresql_ops={'embedding': 'vector_cosine_ops'})
