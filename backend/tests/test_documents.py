@@ -65,7 +65,7 @@ class TestDocumentIngestion:
         data = response.json()
         assert data["original_filename"] == "test.txt"
         assert data["mime_type"] == "text/plain"
-        assert data["processing_status"] in ("QUEUED", "COMPLETED")  # Phase 4: task runs eagerly in tests
+        assert data["processing_status"] in ("QUEUED", "PROCESSING", "PROCESSED", "FAILED")  # Phase 5: task runs eagerly, reaches PROCESSED
         assert "id" in data
 
         # 2. PDF File

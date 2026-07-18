@@ -68,3 +68,11 @@ pre-commit==4.0.1                  # Git hook manager
 # -----------------------------------------------------------------------------
 celery==5.4.0                      # Asynchronous task runner
 redis==5.2.1                       # Redis broker client
+
+# -----------------------------------------------------------------------------
+# Phase 5: Document Processing & Text Extraction
+# -----------------------------------------------------------------------------
+PyMuPDF==1.25.5                    # PDF text + metadata extraction (fitz)
+python-docx==1.1.2                 # DOCX paragraph/table extraction
+charset-normalizer==3.4.1          # Automatic encoding detection for TXT files
+langdetect==1.0.9                  # ISO 639-1 language code detection

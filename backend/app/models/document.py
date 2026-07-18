@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.processed_document import ProcessedDocument
     from app.models.user import User
 
 
@@ -100,7 +101,7 @@ class Document(TimestampMixin, Base):
         nullable=False,
         default="UPLOADED",
         server_default="UPLOADED",
-        comment="Document state: 'UPLOADED', 'QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED'.",
+        comment="Document state: 'UPLOADED','QUEUED','PROCESSING','PROCESSED','FAILED'.",
     )
 
     # ── Relationships (Lazy Async Loading) ───────────────────────────────────
@@ -108,6 +109,13 @@ class Document(TimestampMixin, Base):
         "User",
         back_populates="documents",
         lazy="raise",  # Prevent implicit synchronous query triggers
+    )
+    processed_document: Mapped["ProcessedDocument | None"] = relationship(
+        "ProcessedDocument",
+        back_populates="document",
+        lazy="raise",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:

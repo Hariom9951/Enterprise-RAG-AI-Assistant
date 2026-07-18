@@ -63,37 +63,39 @@ async def get_async_session() -> Any:
 
 
 async def _async_process_document(doc_id: uuid.UUID) -> dict[str, Any]:
-    """Perform async document load, verification, and state update."""
+    """Perform async document load, extraction, and state update — single session."""
+    from app.services.processing_service import process_document_file
+
     async with get_async_session() as db:
         db = getattr(db, "_session", db)  # Safety mapping
+
+        # 1. Verify document exists
         result = await db.execute(select(Document).where(Document.id == doc_id))
         doc = result.scalar_one_or_none()
         if not doc:
             raise ValueError(f"Document {doc_id} not found in database.")
 
-        if doc.processing_status == "COMPLETED":
-            return {"status": "already_completed", "doc_id": str(doc_id)}
+        if doc.processing_status == "PROCESSED":
+            return {"status": "already_processed", "doc_id": str(doc_id)}
 
-        # 1. Update status to PROCESSING
+        # 2. Update status to PROCESSING
         doc.processing_status = "PROCESSING"
         await db.commit()
-        await db.refresh(doc)
         logger.info(f"Transitioned document {doc_id} to PROCESSING.")
 
-        # 2. Check if file exists on disk
+        # 3. Check if file exists on disk
         if not os.path.exists(doc.storage_path):
             doc.processing_status = "FAILED"
             await db.commit()
-            raise FileNotFoundError(f"Physical file missing for document {doc_id} at {doc.storage_path}")
+            raise FileNotFoundError(
+                f"Physical file missing for document {doc_id} at {doc.storage_path}"
+            )
 
-        # 3. Simulate work (sleep for 5 seconds to show progress)
-        await asyncio.sleep(5)
+        # 4. Run the full extraction pipeline within the same session
+        await process_document_file(db, doc_id)
 
-        # 4. Ingestion complete
-        doc.processing_status = "COMPLETED"
-        await db.commit()
-        logger.info(f"Finished processing document {doc_id} successfully.")
-        return {"status": "success", "doc_id": str(doc_id)}
+    logger.info(f"Finished processing document {doc_id} successfully.")
+    return {"status": "success", "doc_id": str(doc_id)}
 
 
 async def _async_handle_failure(doc_id: uuid.UUID) -> None:
@@ -124,15 +126,21 @@ def process_document(self: Task, doc_id_str: str) -> dict[str, Any]:
         return cast(dict[str, Any], run_async_in_thread(_async_process_document(doc_id)))
     except Exception as exc:
         logger.error(f"Error processing document {doc_id_str}: {exc}")
-        # Set status to FAILED
-        run_async_in_thread(_async_handle_failure(doc_id))
 
         # Avoid retrying if file is missing (fails validation permanently)
         if isinstance(exc, FileNotFoundError | ValueError):
+            run_async_in_thread(_async_handle_failure(doc_id))
             raise exc
+
+        from celery.exceptions import Retry
 
         try:
             # Trigger celery task retry on temporary errors (e.g. database locks)
-            raise self.retry(exc=exc)
+            self.retry(exc=exc)
+            raise exc
+        except Retry as retry_exc:
+            raise retry_exc
         except Exception as retry_exc:
+            # Mark document as FAILED only if all retry limits are fully exhausted
+            run_async_in_thread(_async_handle_failure(doc_id))
             raise retry_exc

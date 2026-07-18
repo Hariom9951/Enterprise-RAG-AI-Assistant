@@ -8,6 +8,7 @@ Usage (in alembic/env.py):
 """
 
 from app.models.document import Document  # noqa: F401
+from app.models.processed_document import ProcessedDocument  # noqa: F401
 from app.models.user import User  # noqa: F401
 
-__all__ = ["User", "Document"]
+__all__ = ["User", "Document", "ProcessedDocument"]

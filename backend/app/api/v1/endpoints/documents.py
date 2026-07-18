@@ -12,13 +12,16 @@ Permissions:
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.dependencies import get_current_active_user
+from app.models.processed_document import ProcessedDocument
 from app.models.user import User
 from app.schemas.document import DocumentResponse, DocumentUpdate
+from app.schemas.processed_document import ProcessedDocumentResponse
 from app.services import document_service
 
 router = APIRouter()
@@ -136,3 +139,48 @@ async def get_document_status(
 ) -> dict[str, Any]:
     doc = await document_service.get_document_by_id(db, document_id, current_user.id)
     return {"id": str(doc.id), "status": doc.processing_status}
+
+
+@router.get(
+    "/{document_id}/text",
+    response_model=ProcessedDocumentResponse,
+    summary="Retrieve extracted document text.",
+    description=(
+        "Returns the extracted and normalised text content for a processed document. "
+        "Returns HTTP 202 if the document is still being processed, "
+        "HTTP 404 if text extraction has not yet run."
+    ),
+)
+async def get_document_text(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ProcessedDocumentResponse:
+    # Verify ownership first
+    doc = await document_service.get_document_by_id(db, document_id, current_user.id)
+
+    # If still in pipeline, return 202 Accepted
+    if doc.processing_status in ("UPLOADED", "QUEUED", "PROCESSING"):
+        raise HTTPException(
+            status_code=status.HTTP_202_ACCEPTED,
+            detail={
+                "message": "Document is still being processed.",
+                "processing_status": doc.processing_status,
+            },
+        )
+
+    # Fetch ProcessedDocument record
+    pd_result = await db.execute(
+        select(ProcessedDocument).where(
+            ProcessedDocument.document_id == document_id
+        )
+    )
+    pd_record = pd_result.scalar_one_or_none()
+
+    if pd_record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Processed text not found. The document may have failed processing.",
+        )
+
+    return ProcessedDocumentResponse.model_validate(pd_record)

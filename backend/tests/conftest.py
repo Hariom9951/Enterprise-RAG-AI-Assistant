@@ -15,6 +15,8 @@ Key design decisions:
 
 from __future__ import annotations
 
+import os as _os
+import tempfile as _tempfile
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -36,10 +38,11 @@ from app.tasks.celery_app import celery_app
 celery_app.conf.task_always_eager = True
 
 # =============================================================================
-# Test Database — in-memory SQLite (function scoped for isolation)
+# Test Database — file-based SQLite (function scoped for isolation)
 # =============================================================================
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+_tmp_dir = _tempfile.gettempdir()
 
 
 @pytest_asyncio.fixture()
@@ -47,11 +50,17 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Yield a fresh, isolated database session for a single test.
 
-    Creates a brand-new in-memory SQLite database per test function,
-    which guarantees complete isolation — no state leaks between tests.
+    Uses a file-based SQLite database (rather than in-memory) so that
+    background tasks running in helper threads can connect to the same
+    physical file independently without sharing the same asyncio event loop.
     """
+    # Create a unique DB file per test to guarantee isolation
+    db_fd, db_path = _tempfile.mkstemp(suffix=".db", dir=_tmp_dir)
+    _os.close(db_fd)
+    db_url = f"sqlite+aiosqlite:///{db_path}"
+
     engine = create_async_engine(
-        TEST_DATABASE_URL,
+        db_url,
         connect_args={"check_same_thread": False},
         echo=False,
     )
@@ -74,21 +83,48 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.close()
 
-    # Drop all tables and dispose engine.
+    # Drop all tables, dispose engine, and remove the temp file.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
+    _os.unlink(db_path)
 
 
 @pytest.fixture(autouse=True)
 def override_worker_db(db_session: AsyncSession):
     """
-    Auto-inject the test's isolated SQLite database session into background tasks
-    globally for all test runs (both Task units and API integration runs).
+    Auto-inject the test's isolated SQLite database into background tasks.
+
+    Creates an independent session factory pointing to the same DB file as
+    the test's db_session. The task gets its own session, but can see state
+    committed by the test and vice versa (committed changes are visible across
+    connections on the same file-based SQLite).
     """
+    # Extract the database URL from the existing session's engine bind
+    test_engine = db_session.get_bind()
+    db_url = str(test_engine.url)
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker as _asm
+    from sqlalchemy.ext.asyncio import create_async_engine as _cae
+
     @asynccontextmanager
     async def mock_session():
-        yield db_session
+        # Create a short-lived engine + session for each task call
+        task_engine = _cae(
+            db_url,
+            connect_args={"check_same_thread": False},
+            echo=False,
+        )
+        task_factory = _asm(
+            bind=task_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+            autocommit=False,
+        )
+        async with task_factory() as session:
+            yield session
+        await task_engine.dispose()
 
     with patch("app.tasks.document_tasks.get_async_session", mock_session):
         yield

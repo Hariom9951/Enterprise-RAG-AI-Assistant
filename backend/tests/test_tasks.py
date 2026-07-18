@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import os
 import uuid
-from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document
+from app.models.processed_document import ProcessedDocument
 from app.models.user import User
 from app.tasks.document_tasks import process_document
 
@@ -23,7 +23,7 @@ from app.tasks.document_tasks import process_document
 # ── Integration Tests ─────────────────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_process_document_task_success(db_session: AsyncSession):
-    """Verify standard document ingestion task updates status to COMPLETED."""
+    """Verify standard document ingestion task updates status to PROCESSED and creates ProcessedDocument."""
     # 1. Create a dummy user
     user = User(
         full_name="Task Worker Test",
@@ -60,18 +60,25 @@ async def test_process_document_task_success(db_session: AsyncSession):
 
     # 3. Trigger task execution synchronously in testing thread
     # Bypass Celery queue using direct call, which executes the task code synchronously
-    with patch("asyncio.sleep", return_value=None): # Speed up task execution
-        result = process_document(str(doc_id))
+    result = process_document(str(doc_id))
 
     # Verify task result body
     assert result["status"] == "success"
     assert result["doc_id"] == str(doc_id)
 
-    # 4. Assert database status updated to COMPLETED
-    await db_session.close() # Reset cache
+    # 4. Assert database status updated to PROCESSED and ProcessedDocument created
+    await db_session.close()  # Reset cache
     result_db = await db_session.execute(select(Document).where(Document.id == doc_id))
     doc_updated = result_db.scalar_one()
-    assert doc_updated.processing_status == "COMPLETED"
+    assert doc_updated.processing_status == "PROCESSED"
+
+    # Verify ProcessedDocument record was created
+    pd_result = await db_session.execute(
+        select(ProcessedDocument).where(ProcessedDocument.document_id == doc_id)
+    )
+    pd = pd_result.scalar_one_or_none()
+    assert pd is not None
+    assert pd.word_count >= 0
 
     # Clean up physical file
     if os.path.exists(storage_path):
@@ -115,6 +122,7 @@ async def test_process_document_task_file_missing(db_session: AsyncSession):
         process_document(str(doc_id))
 
     # 4. Assert database status updated to FAILED
+    await db_session.close()  # Reset cache
     result_db = await db_session.execute(select(Document).where(Document.id == doc_id))
     doc_updated = result_db.scalar_one()
     assert doc_updated.processing_status == "FAILED"

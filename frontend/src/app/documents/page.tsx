@@ -407,9 +407,13 @@ export default function DocumentsPage() {
                       <div className="col-span-5 sm:col-span-6 flex items-center space-x-3 pr-2 overflow-hidden">
                         <FileText className="h-5 w-5 text-indigo-400 shrink-0" />
                         <div className="overflow-hidden">
-                          <p className="text-sm font-medium text-slate-200 truncate" title={doc.original_filename}>
+                          <Link
+                            href={`/documents/${doc.id}`}
+                            className="text-sm font-medium text-slate-200 truncate hover:text-indigo-400 transition-colors block"
+                            title={doc.original_filename}
+                          >
                             {doc.original_filename}
-                          </p>
+                          </Link>
                           <p className="text-[10px] text-slate-500">
                             Uploaded {new Date(doc.created_at).toLocaleDateString()}
                           </p>

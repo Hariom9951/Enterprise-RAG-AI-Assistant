@@ -41,6 +41,22 @@ export interface DocumentResponse {
   updated_at: string;
 }
 
+export interface ProcessedDocumentResponse {
+  id: string;
+  document_id: string;
+  raw_text: string;
+  clean_text: string;
+  language: string;
+  page_count: number;
+  word_count: number;
+  character_count: number;
+  processing_time: number;
+  preview: string;
+  is_truncated: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ApiError {
   error: {
     code: string;
@@ -184,4 +200,15 @@ export const documentsApi = {
   /** Get document status. */
   status: (id: string): Promise<{ id: string; status: string }> =>
     request<{ id: string; status: string }>(`/documents/${id}/status`),
+
+  /** Get extracted document text and statistics. Returns null if 202 (still processing). */
+  getText: async (id: string): Promise<ProcessedDocumentResponse | null> => {
+    const token = getAccessToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const response = await fetch(`${API_BASE}/documents/${id}/text`, { headers });
+    if (response.status === 202) return null;  // still processing
+    if (!response.ok) throw await response.json();
+    return response.json() as Promise<ProcessedDocumentResponse>;
+  },
 };
