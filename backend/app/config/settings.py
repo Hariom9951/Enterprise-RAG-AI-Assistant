@@ -177,6 +177,29 @@ class Settings(BaseSettings):
     )
 
     # -------------------------------------------------------------------------
+    # Phase 6: Intelligent Chunking & Metadata Enrichment
+    # -------------------------------------------------------------------------
+    default_chunk_size: int = Field(
+        default=500,
+        ge=1,
+        description="Default semantic text chunk size in tokens.",
+    )
+    default_chunk_overlap: int = Field(
+        default=50,
+        ge=0,
+        description="Default token overlap between consecutive chunks.",
+    )
+    max_chunk_size: int = Field(
+        default=1000,
+        ge=1,
+        description="Maximum allowed chunk size in tokens.",
+    )
+    tokenizer_name: str = Field(
+        default="cl100k_base",
+        description="Tiktoken tokenizer name (encoding) to count tokens.",
+    )
+
+    # -------------------------------------------------------------------------
     # Validators
     # -------------------------------------------------------------------------
     @field_validator("allowed_origins", "allowed_methods", "allowed_headers", mode="before")

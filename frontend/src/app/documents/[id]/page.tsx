@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { documentsApi, ProcessedDocumentResponse, DocumentResponse } from "@/lib/api";
+import ChunksTab from "./chunks-tab";
 
 // ─── Status badge helper ──────────────────────────────────────────────────────
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; label: string }> = {
@@ -57,6 +58,7 @@ export default function DocumentDetailPage() {
 
   const TERMINAL_STATUSES = ["PROCESSED", "FAILED", "COMPLETED"];
   const isTerminal = doc ? TERMINAL_STATUSES.includes(doc.processing_status) : false;
+  const [activeTab, setActiveTab] = useState<"text" | "chunks">("text");
 
   const fetchData = useCallback(async () => {
     try {
@@ -160,45 +162,77 @@ export default function DocumentDetailPage() {
           )}
         </section>
 
-        {/* ── Statistics ── */}
+        {/* ── Tab Switcher ── */}
         {processed && (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-white">Extraction Statistics</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <StatCard icon="📄" label="Pages" value={processed.page_count} />
-              <StatCard icon="📝" label="Words" value={processed.word_count} />
-              <StatCard icon="🔤" label="Characters" value={processed.character_count} />
-              <StatCard icon="🌐" label="Language" value={langName} />
-            </div>
-            <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl px-4 py-3 flex items-center justify-between text-sm">
-              <span className="text-slate-400">Extraction time</span>
-              <span className="text-white font-mono">{processed.processing_time.toFixed(3)}s</span>
-            </div>
-          </section>
+          <div className="flex border-b border-slate-800">
+            <button
+              onClick={() => setActiveTab("text")}
+              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+                activeTab === "text"
+                  ? "border-indigo-500 text-indigo-400"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              📄 Text Preview
+            </button>
+            <button
+              onClick={() => setActiveTab("chunks")}
+              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+                activeTab === "chunks"
+                  ? "border-indigo-500 text-indigo-400"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              🧩 Semantic Chunks
+            </button>
+          </div>
         )}
 
-        {/* ── Text preview ── */}
-        {processed && (
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Text Preview</h2>
-              {processed.is_truncated && (
-                <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded-full">
-                  First 500 chars shown
-                </span>
-              )}
-            </div>
-            <div className="bg-slate-900 border border-slate-700/50 rounded-xl p-5">
-              <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">
-                {processed.preview}
-              </pre>
-              {processed.is_truncated && (
-                <p className="text-xs text-slate-500 mt-3 border-t border-slate-700/50 pt-3">
-                  … {(processed.character_count - 500).toLocaleString()} more characters not shown
-                </p>
-              )}
-            </div>
-          </section>
+
+        {/* ── Tab Content ── */}
+        {processed && activeTab === "text" && (
+          <>
+            {/* ── Statistics ── */}
+            <section className="space-y-4">
+              <h2 className="text-lg font-semibold text-white">Extraction Statistics</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <StatCard icon="📄" label="Pages" value={processed.page_count} />
+                <StatCard icon="📝" label="Words" value={processed.word_count} />
+                <StatCard icon="🔤" label="Characters" value={processed.character_count} />
+                <StatCard icon="🌐" label="Language" value={langName} />
+              </div>
+              <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl px-4 py-3 flex items-center justify-between text-sm">
+                <span className="text-slate-400">Extraction time</span>
+                <span className="text-white font-mono">{processed.processing_time.toFixed(3)}s</span>
+              </div>
+            </section>
+
+            {/* ── Text preview ── */}
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white">Text Preview</h2>
+                {processed.is_truncated && (
+                  <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded-full">
+                    First 500 chars shown
+                  </span>
+                )}
+              </div>
+              <div className="bg-slate-900 border border-slate-700/50 rounded-xl p-5">
+                <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">
+                  {processed.preview}
+                </pre>
+                {processed.is_truncated && (
+                  <p className="text-xs text-slate-500 mt-3 border-t border-slate-700/50 pt-3">
+                    … {(processed.character_count - 500).toLocaleString()} more characters not shown
+                  </p>
+                )}
+              </div>
+            </section>
+          </>
+        )}
+
+        {processed && activeTab === "chunks" && (
+          <ChunksTab documentId={docId} />
         )}
 
         {/* ── Not yet processed placeholder ── */}

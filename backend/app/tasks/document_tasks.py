@@ -94,7 +94,12 @@ async def _async_process_document(doc_id: uuid.UUID) -> dict[str, Any]:
         # 4. Run the full extraction pipeline within the same session
         await process_document_file(db, doc_id)
 
-    logger.info(f"Finished processing document {doc_id} successfully.")
+        # 5. Semantic Chunking & Metadata Enrichment
+        from app.services.chunking_service import ChunkingService
+        chunker = ChunkingService()
+        await chunker.chunk_document(db, doc_id)
+
+    logger.info(f"Finished processing and chunking document {doc_id} successfully.")
     return {"status": "success", "doc_id": str(doc_id)}
 
 

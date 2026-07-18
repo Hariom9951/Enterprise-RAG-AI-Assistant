@@ -291,20 +291,19 @@ Copy `backend/.env.example` to `backend/.env` and configure the values.
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token TTL in minutes |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL in days |
 
----
-
 ## Running Tests
 
-Tests run inside an isolated in-memory SQLite database (`aiosqlite`) dynamically created per test function — no local Postgres setup is required for CI or local runs.
+Tests run inside an isolated file-based SQLite database (`aiosqlite`) dynamically created per test module — no local Postgres setup is required for CI or local runs.
 
 ```bash
 cd backend
 
 # Activate virtual environment first
-source .venv/bin/activate   # or .venv\Scripts\activate on Windows
+# source .venv/bin/activate (macOS/Linux)
+# .venv\Scripts\activate.ps1 (PowerShell)
 
-# Run the full test suite (32 tests)
-pytest
+# Run the full test suite (92 tests)
+pytest tests/ -v
 ```
 
 ---
@@ -315,9 +314,12 @@ pytest
 |-------|-------------|-----------------|--------|
 | **Phase 1** | Project foundation, FastAPI skeleton, Next.js shell, Docker Compose | FastAPI, Next.js, Docker | ✅ Complete |
 | **Phase 2** | Database configuration & Auth System | PostgreSQL, SQLAlchemy 2.0, Alembic, JWT, BCrypt | ✅ Complete |
-| **Phase 3** | Redis caching & session management | Redis, python-redis | 📅 Planned |
-| **Phase 4** | RAG pipeline, document ingestion, semantic search | LangChain, PGVector, OpenAI, Embeddings | 📅 Planned |
-| **Phase 5** | Production deployment, monitoring, CI/CD | Nginx, GitHub Actions, Prometheus | 📅 Planned |
+| **Phase 3** | Secure Document Upload & CRUD Management | FastAPI, Pydantic, UUID storage | ✅ Complete |
+| **Phase 4** | Celery Asynchronous Worker & Redis Task Queues | Redis, Celery, Worker Health Checks | ✅ Complete |
+| **Phase 5** | Document Text Extraction (PDF, DOCX, TXT) | PyMuPDF, python-docx, langdetect | ✅ Complete |
+| **Phase 6** | Intelligent Semantic Chunking & Metadata Enrichment | tiktoken, Recursive Splitters, Chunk API | ✅ Complete |
+| **Phase 7** | Vector Search & pgvector Embeddings Indexing | pgvector, OpenAI, LangChain | 📅 Planned |
+| **Phase 8** | Chat RAG Interface & Memory Management | LangChain, WebSocket, Redis Memory | 📅 Planned |
 
 ---
 

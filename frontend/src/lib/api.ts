@@ -57,6 +57,37 @@ export interface ProcessedDocumentResponse {
   updated_at: string;
 }
 
+export interface ChunkResponse {
+  id: string;
+  document_id: string;
+  chunk_index: number;
+  text: string;
+  token_count: number;
+  character_count: number;
+  word_count: number;
+  reading_time_estimate: number;
+  page_number: number;
+  section_title: string | null;
+  heading_level: number | null;
+  language: string;
+  metadata: Record<string, any>;
+  sha256_hash: string;
+  version: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChunkSummaryResponse {
+  total_chunks: number;
+  total_tokens: number;
+  average_chunk_size: number;
+  min_chunk_size: number;
+  max_chunk_size: number;
+  reading_time_estimate: number;
+  languages: string[];
+}
+
+
 export interface ApiError {
   error: {
     code: string;
@@ -211,4 +242,39 @@ export const documentsApi = {
     if (!response.ok) throw await response.json();
     return response.json() as Promise<ProcessedDocumentResponse>;
   },
+
+  /** Get paginated document chunks. */
+  getChunks: (
+    id: string,
+    params: { limit?: number; offset?: number; search?: string } = {}
+  ): Promise<ChunkResponse[]> => {
+    const query = new URLSearchParams();
+    if (params.limit !== undefined) query.append("limit", params.limit.toString());
+    if (params.offset !== undefined) query.append("offset", params.offset.toString());
+    if (params.search !== undefined) query.append("search", params.search);
+
+    const queryString = query.toString();
+    return request<ChunkResponse[]>(`/documents/${id}/chunks${queryString ? `?${queryString}` : ""}`);
+  },
+
+  /** Get summary of chunks for a document. */
+  getChunkSummary: (id: string): Promise<ChunkSummaryResponse> =>
+    request<ChunkSummaryResponse>(`/documents/${id}/chunk-summary`),
 };
+
+// =============================================================================
+// Chunks API
+// =============================================================================
+
+export const chunksApi = {
+  /** Get single chunk details. */
+  get: (id: string): Promise<ChunkResponse> =>
+    request<ChunkResponse>(`/chunks/${id}`),
+
+  /** Delete a single chunk. */
+  delete: (id: string): Promise<void> =>
+    request<void>(`/chunks/${id}`, {
+      method: "DELETE",
+    }),
+};
+

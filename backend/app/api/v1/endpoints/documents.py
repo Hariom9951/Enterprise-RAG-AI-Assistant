@@ -18,8 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.dependencies import get_current_active_user
+from app.models.chunk import Chunk
 from app.models.processed_document import ProcessedDocument
 from app.models.user import User
+from app.schemas.chunk import ChunkResponse, ChunkSummaryResponse
 from app.schemas.document import DocumentResponse, DocumentUpdate
 from app.schemas.processed_document import ProcessedDocumentResponse
 from app.services import document_service
@@ -184,3 +186,77 @@ async def get_document_text(
         )
 
     return ProcessedDocumentResponse.model_validate(pd_record)
+
+
+@router.get(
+    "/{document_id}/chunks",
+    response_model=list[ChunkResponse],
+    summary="Get document chunks.",
+    description="Retrieve paginated list of semantic chunks for a processed document.",
+)
+async def get_document_chunks(
+    document_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    search: str | None = Query(default=None, description="Search filter for text within chunks."),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[ChunkResponse]:
+    # Check ownership
+    await document_service.get_document_by_id(db, document_id, current_user.id)
+
+    # Query chunks
+    query = select(Chunk).where(Chunk.document_id == document_id)
+    if search:
+        query = query.where(Chunk.text.ilike(f"%{search}%"))
+
+    query = query.order_by(Chunk.chunk_index.asc()).offset(offset).limit(limit)
+    result = await db.execute(query)
+    chunks = result.scalars().all()
+    return [ChunkResponse.model_validate(c) for c in chunks]
+
+
+@router.get(
+    "/{document_id}/chunk-summary",
+    response_model=ChunkSummaryResponse,
+    summary="Get document chunk summary.",
+    description="Retrieve statistical aggregation of chunks generated for a document.",
+)
+async def get_document_chunk_summary(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ChunkSummaryResponse:
+    # Check ownership
+    await document_service.get_document_by_id(db, document_id, current_user.id)
+
+    # Get chunks count & stats
+    query = select(Chunk).where(Chunk.document_id == document_id)
+    result = await db.execute(query)
+    chunks = result.scalars().all()
+
+    if not chunks:
+        return ChunkSummaryResponse(
+            total_chunks=0,
+            total_tokens=0,
+            average_chunk_size=0.0,
+            min_chunk_size=0,
+            max_chunk_size=0,
+            reading_time_estimate=0.0,
+            languages=[],
+        )
+
+    token_counts = [c.token_count for c in chunks]
+    total_chunks = len(chunks)
+    total_tokens = sum(token_counts)
+    languages = list(set(c.language for c in chunks if c.language))
+
+    return ChunkSummaryResponse(
+        total_chunks=total_chunks,
+        total_tokens=total_tokens,
+        average_chunk_size=total_tokens / total_chunks,
+        min_chunk_size=min(token_counts),
+        max_chunk_size=max(token_counts),
+        reading_time_estimate=sum(c.reading_time_estimate for c in chunks),
+        languages=languages,
+    )

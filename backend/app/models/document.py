@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.chunk import Chunk
     from app.models.processed_document import ProcessedDocument
     from app.models.user import User
 
@@ -115,6 +116,12 @@ class Document(TimestampMixin, Base):
         back_populates="document",
         lazy="raise",
         uselist=False,
+        cascade="all, delete-orphan",
+    )
+    chunks: Mapped[list["Chunk"]] = relationship(
+        "Chunk",
+        back_populates="document",
+        lazy="raise",
         cascade="all, delete-orphan",
     )
 

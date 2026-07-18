@@ -106,26 +106,25 @@ The service layer contains the pure functional computations and CRUD queries of 
 
 ---
 
-## 7. Future RAG Ingestion & Query Pipeline (Phase 4)
+## 7. Document Ingestion, Extraction & Semantic Chunking Pipeline
 
 ```mermaid
 flowchart TD
-    subgraph Ingestion Pipeline
-        Doc[Upload PDF/Doc] --> Parse[Document Parser]
-        Parse --> Chunk[Text Chunking / Recursive Character]
-        Chunk --> Embed[Embedding Generator / OpenAI]
-        Embed --> Store[PGVector DB Store]
-    end
-
-    subgraph Query Pipeline
-        Query[User Question] --> QueryEmbed[Question Embedding]
-        QueryEmbed --> Search[Semantic Vector Similarity Search]
-        Store -->|Similar Chunks| Search
-        Search --> Prompt[Formulate Prompt Context]
-        Prompt --> LLMCall[LLM Inference]
-        LLMCall --> Response[Grounded Answer with Citations]
+    subgraph Ingestion & Chunking Pipeline
+        Doc[Upload PDF/DOCX/TXT] --> Parser[Document Parsers / PyMuPDF & python-docx]
+        Parser --> ExtractedText[Extracted Raw Text]
+        ExtractedText --> CeleryTask[Celery Background Worker]
+        CeleryTask --> Chunker[Semantic Chunking / ChunkingService]
+        Chunker --> RecursiveSplit[Recursive Token Splitter / tiktoken]
+        RecursiveSplit --> Enrich[Metadata Enrichment / Headers & Pages]
+        Enrich --> Store[PostgreSQL / Chunk DB Index]
     end
 ```
+
+- **Document Ingestion:** Documents are securely uploaded, metadata (original filename, sha256_hash, mime_type, file_size) saved, and stored on persistent disk storage.
+- **Asynchronous Pipeline:** Celery workers manage the text extraction and semantic chunking pipeline in the background using Redis task brokers.
+- **Recursive Semantic Splitting:** Text chunks are created respecting a max token count using `tiktoken` to count tokens. The text is recursively split by page breaks (`\x0c`), Markdown headings, paragraphs, sentences, and words.
+- **Enrichment & Context:** Chunks inherit global document properties, track their page numbers, section headers, and reading order indexes.
 
 ---
 

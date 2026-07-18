@@ -12,6 +12,7 @@ To add a new feature:
 from fastapi import APIRouter
 
 from app.api.v1.endpoints.auth import router as auth_router
+from app.api.v1.endpoints.chunks import router as chunks_router
 from app.api.v1.endpoints.documents import router as documents_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.jobs import router as jobs_router
@@ -38,7 +39,10 @@ api_v1_router.include_router(documents_router, prefix="/documents", tags=["docum
 # ── Phase 4: Celery Background Jobs ───────────────────────────────────────────
 api_v1_router.include_router(jobs_router, prefix="/jobs", tags=["jobs"])
 
-# ── Future routers (Phase 5+) ─────────────────────────────────────────────────
+# ── Phase 6: Semantic Chunking ────────────────────────────────────────────────
+api_v1_router.include_router(chunks_router, prefix="/chunks", tags=["chunks"])
+
+# ── Future routers (Phase 7+) ─────────────────────────────────────────────────
 # from app.api.v1.endpoints.chat      import router as chat_router
 # from app.api.v1.endpoints.search    import router as search_router
 
