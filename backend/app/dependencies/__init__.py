@@ -53,6 +53,7 @@ DBSession = Annotated[AsyncSession, Depends(get_db)]
 # Core Auth Dependencies
 # =============================================================================
 
+
 async def get_current_user(
     credentials: BearerCredentials,
     db: DBSession,
@@ -82,7 +83,9 @@ async def get_current_user(
     try:
         user_id_str = payload["sub"]
     except KeyError as exc:
-        raise UnauthorizedException(message="Token contains an invalid user identifier.") from exc
+        raise UnauthorizedException(
+            message="Token contains an invalid user identifier."
+        ) from exc
 
     user = await get_user_by_id(db, user_id_str)
     if user is None:
@@ -121,7 +124,10 @@ async def admin_required(
     if current_user.role != UserRole.ADMIN:
         raise ForbiddenException(
             message="You do not have permission to access this resource.",
-            detail={"required_role": UserRole.ADMIN.value, "your_role": current_user.role.value},
+            detail={
+                "required_role": UserRole.ADMIN.value,
+                "your_role": current_user.role.value,
+            },
         )
     return current_user
 

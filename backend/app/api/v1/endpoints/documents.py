@@ -30,8 +30,12 @@ from app.schemas.chunk import (
 )
 from app.schemas.document import DocumentResponse, DocumentUpdate
 from app.schemas.processed_document import ProcessedDocumentResponse
+from app.schemas.search import SearchFilters, SearchRequest, SearchResultItem
 from app.services import document_service
+from app.services.retrieval_service import RetrievalService
 from app.tasks.document_tasks import embed_document
+
+retrieval_service = RetrievalService()
 
 router = APIRouter()
 
@@ -64,7 +68,9 @@ async def upload_document(
 async def list_documents(
     limit: int = Query(default=20, ge=1, le=100, description="Max records to return."),
     offset: int = Query(default=0, ge=0, description="Record pagination offset."),
-    search: str | None = Query(default=None, description="Search term for original filename."),
+    search: str | None = Query(
+        default=None, description="Search term for original filename."
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> list[DocumentResponse]:
@@ -180,9 +186,7 @@ async def get_document_text(
 
     # Fetch ProcessedDocument record
     pd_result = await db.execute(
-        select(ProcessedDocument).where(
-            ProcessedDocument.document_id == document_id
-        )
+        select(ProcessedDocument).where(ProcessedDocument.document_id == document_id)
     )
     pd_record = pd_result.scalar_one_or_none()
 
@@ -205,7 +209,9 @@ async def get_document_chunks(
     document_id: uuid.UUID,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    search: str | None = Query(default=None, description="Search filter for text within chunks."),
+    search: str | None = Query(
+        default=None, description="Search filter for text within chunks."
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> list[ChunkResponse]:
@@ -305,6 +311,7 @@ async def get_document_embedding_status(
 
     # Count total chunks
     from sqlalchemy import func
+
     total_query = select(func.count(Chunk.id)).where(Chunk.document_id == document_id)
     total_res = await db.execute(total_query)
     total_chunks = total_res.scalar() or 0
@@ -331,9 +338,11 @@ async def get_document_embedding_status(
     # Get model used
     model_used = settings.embedding_model
     if processed_chunks > 0:
-        model_query = select(Chunk.embedding_model).where(
-            Chunk.document_id == document_id, Chunk.embedding_model.is_not(None)
-        ).limit(1)
+        model_query = (
+            select(Chunk.embedding_model)
+            .where(Chunk.document_id == document_id, Chunk.embedding_model.is_not(None))
+            .limit(1)
+        )
         model_res = await db.execute(model_query)
         model_used = model_res.scalar() or settings.embedding_model
 
@@ -353,7 +362,9 @@ async def get_document_embedding_status(
         model_used=model_used,
         vector_dimension=settings.vector_dimension,
         processing_time_ms=processing_time_ms,
-        error_message=None if status_str != "FAILED" else "Document processing task failed.",
+        error_message=None
+        if status_str != "FAILED"
+        else "Document processing task failed.",
     )
 
 
@@ -373,6 +384,7 @@ async def get_document_embedding_summary(
 
     # Sum stats
     from sqlalchemy import func
+
     stats_query = select(
         func.count(Chunk.id),
         func.sum(Chunk.embedding_duration_ms),
@@ -390,9 +402,11 @@ async def get_document_embedding_summary(
     model_used = settings.embedding_model
     version = "1.0.0"
     if total_embedded > 0:
-        meta_query = select(Chunk.embedding_model, Chunk.embedding_version).where(
-            Chunk.document_id == document_id, Chunk.embedding.is_not(None)
-        ).limit(1)
+        meta_query = (
+            select(Chunk.embedding_model, Chunk.embedding_version)
+            .where(Chunk.document_id == document_id, Chunk.embedding.is_not(None))
+            .limit(1)
+        )
         meta_res = await db.execute(meta_query)
         meta_row = meta_res.first()
         if meta_row:
@@ -407,3 +421,44 @@ async def get_document_embedding_summary(
         version=version,
         total_duration_ms=total_duration_ms,
     )
+
+
+@router.post(
+    "/{document_id}/search",
+    response_model=list[SearchResultItem],
+    status_code=status.HTTP_200_OK,
+    summary="Execute hybrid search scoped to a specific document.",
+    description="Run vector cosine matching combined with FTS keyword filtering restricted only to text chunks inside this document.",
+)
+async def document_search(
+    document_id: uuid.UUID,
+    payload: SearchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[SearchResultItem]:
+    # Check document ownership/existence first
+    await document_service.get_document_by_id(db, document_id, current_user.id)
+
+    # Coerce filters to scope query only to this document ID
+    search_filters = payload.filters or SearchFilters()
+    search_filters.document_ids = [document_id]
+
+    raw_results = await retrieval_service.execute_search(
+        db=db,
+        query_text=payload.query,
+        user_id=current_user.id,
+        top_k=payload.top_k,
+        threshold=payload.threshold,
+        search_type=payload.search_type,
+        filters=search_filters.model_dump(),
+        offset=payload.offset,
+    )
+
+    return [
+        SearchResultItem(
+            chunk=ChunkResponse.model_validate(chunk),
+            document=DocumentResponse.model_validate(doc),
+            score=score,
+        )
+        for chunk, doc, score in raw_results
+    ]

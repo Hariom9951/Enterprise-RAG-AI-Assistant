@@ -24,6 +24,7 @@ import pytest
 # Helpers — create minimal valid in-memory files
 # =============================================================================
 
+
 def make_txt_file(content: str, encoding: str = "utf-8") -> bytes:
     return content.encode(encoding)
 
@@ -64,6 +65,7 @@ def make_minimal_pdf(text_pages: list[str]) -> bytes:
 # =============================================================================
 # Normaliser Tests
 # =============================================================================
+
 
 class TestNormalizer:
     def test_nfc_normalisation(self) -> None:
@@ -150,6 +152,7 @@ class TestNormalizer:
 # Language Detection Tests
 # =============================================================================
 
+
 class TestLanguageDetector:
     def test_english_detection(self) -> None:
         from app.processors.language_detector import detect_language
@@ -174,6 +177,7 @@ class TestLanguageDetector:
 # TXT Processor Tests
 # =============================================================================
 
+
 class TestTXTProcessor:
     def _write_temp(self, data: bytes, suffix: str = ".txt") -> Path:
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
@@ -184,7 +188,9 @@ class TestTXTProcessor:
     def test_utf8_extraction(self) -> None:
         from app.processors.txt_processor import TXTProcessor
 
-        content = "Hello, world! This is a UTF-8 encoded plain text file with enough words."
+        content = (
+            "Hello, world! This is a UTF-8 encoded plain text file with enough words."
+        )
         path = self._write_temp(content.encode("utf-8"))
         try:
             result = TXTProcessor().extract(path)
@@ -200,7 +206,9 @@ class TestTXTProcessor:
         from app.processors.txt_processor import TXTProcessor
 
         # Latin-1 specific characters: é, ü, ñ
-        content = "Héllo wörld! This text uses Latin-1 encoding with accented characters."
+        content = (
+            "Héllo wörld! This text uses Latin-1 encoding with accented characters."
+        )
         path = self._write_temp(content.encode("latin-1"))
         try:
             result = TXTProcessor().extract(path)
@@ -242,7 +250,9 @@ class TestTXTProcessor:
     def test_processing_time_recorded(self) -> None:
         from app.processors.txt_processor import TXTProcessor
 
-        content = "Timing test with enough text to measure processing duration properly."
+        content = (
+            "Timing test with enough text to measure processing duration properly."
+        )
         path = self._write_temp(content.encode("utf-8"))
         try:
             result = TXTProcessor().extract(path)
@@ -254,6 +264,7 @@ class TestTXTProcessor:
 # =============================================================================
 # PDF Processor Tests
 # =============================================================================
+
 
 class TestPDFProcessor:
     def _write_temp(self, data: bytes, suffix: str = ".pdf") -> Path:
@@ -277,7 +288,9 @@ class TestPDFProcessor:
     def test_multi_page_count(self) -> None:
         from app.processors.pdf_processor import PDFProcessor
 
-        pdf_bytes = make_minimal_pdf(["Page one content here.", "Page two content here."])
+        pdf_bytes = make_minimal_pdf(
+            ["Page one content here.", "Page two content here."]
+        )
         path = self._write_temp(pdf_bytes)
         try:
             result = PDFProcessor().extract(path)
@@ -323,6 +336,7 @@ class TestPDFProcessor:
 # DOCX Processor Tests
 # =============================================================================
 
+
 class TestDOCXProcessor:
     def _write_temp(self, data: bytes, suffix: str = ".docx") -> Path:
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
@@ -333,10 +347,12 @@ class TestDOCXProcessor:
     def test_paragraph_extraction(self) -> None:
         from app.processors.docx_processor import DOCXProcessor
 
-        docx_bytes = make_minimal_docx([
-            "Introduction heading",
-            "This is a paragraph with several words for testing the docx processor extraction."
-        ])
+        docx_bytes = make_minimal_docx(
+            [
+                "Introduction heading",
+                "This is a paragraph with several words for testing the docx processor extraction.",
+            ]
+        )
         path = self._write_temp(docx_bytes)
         try:
             result = DOCXProcessor().extract(path)
@@ -384,6 +400,7 @@ class TestDOCXProcessor:
 # =============================================================================
 # Processor Factory Tests
 # =============================================================================
+
 
 class TestProcessorFactory:
     def test_pdf_routing(self) -> None:

@@ -23,6 +23,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 # Declarative Base
 # =============================================================================
 
+
 class Base(DeclarativeBase):
     """
     Base class for all SQLAlchemy ORM models.
@@ -30,12 +31,14 @@ class Base(DeclarativeBase):
     Every model in ``app/models/`` must inherit from this class so that
     Alembic's ``autogenerate`` can discover them and create migrations.
     """
+
     pass
 
 
 # =============================================================================
 # Mixins
 # =============================================================================
+
 
 class UUIDPrimaryKeyMixin:
     """

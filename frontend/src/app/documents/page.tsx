@@ -59,21 +59,28 @@ export default function DocumentsPage() {
         search: search.trim() || undefined,
       });
       setDocuments(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setErrorMsg(err.error?.message || "Failed to load documents.");
+      const errorResponse = err as { error?: { message?: string } } | undefined;
+      setErrorMsg(errorResponse?.error?.message || "Failed to load documents.");
     } finally {
       setLoading(false);
     }
   }, [offset, search]);
 
   useEffect(() => {
-    fetchDocuments();
+    const timer = setTimeout(() => {
+      fetchDocuments();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchDocuments]);
 
   // Debounced search trigger reset
   useEffect(() => {
-    setOffset(0);
+    const timer = setTimeout(() => {
+      setOffset(0);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [search]);
 
   // ── Transient State Polling Hook ──────────────────────────────────────────
@@ -147,9 +154,10 @@ export default function DocumentsPage() {
       setUploadProgress(100);
       setSuccessMsg(`Document '${file.name}' uploaded and queued for background processing.`);
       fetchDocuments();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setErrorMsg(err.error?.message || "File upload failed.");
+      const errorResponse = err as { error?: { message?: string } } | undefined;
+      setErrorMsg(errorResponse?.error?.message || "File upload failed.");
     } finally {
       setTimeout(() => {
         setUploading(false);
@@ -168,9 +176,10 @@ export default function DocumentsPage() {
       setSuccessMsg(`Document renamed to '${newName.trim()}'.`);
       setEditingDoc(null);
       fetchDocuments();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setErrorMsg(err.error?.message || "Failed to rename document.");
+      const errorResponse = err as { error?: { message?: string } } | undefined;
+      setErrorMsg(errorResponse?.error?.message || "Failed to rename document.");
     }
   };
 
@@ -183,9 +192,10 @@ export default function DocumentsPage() {
       setSuccessMsg(`Document '${confirmDeleteDoc.original_filename}' deleted.`);
       setConfirmDeleteDoc(null);
       fetchDocuments();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setErrorMsg(err.error?.message || "Failed to delete document.");
+      const errorResponse = err as { error?: { message?: string } } | undefined;
+      setErrorMsg(errorResponse?.error?.message || "Failed to delete document.");
     }
   };
 
@@ -256,7 +266,13 @@ export default function DocumentsPage() {
               Enterprise RAG
             </span>
           </Link>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-6">
+            <Link
+              href="/search"
+              className="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1.5"
+            >
+              🔍 Semantic Search
+            </Link>
             <Link href="/" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">
               Back to Home
             </Link>
@@ -528,7 +544,7 @@ export default function DocumentsPage() {
           <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative animate-in fade-in zoom-in duration-200">
             <h3 className="text-lg font-bold text-white mb-2">Delete Document</h3>
             <p className="text-sm text-slate-400 mb-6">
-              Are you sure you want to permanently delete <strong className="text-slate-200">'{confirmDeleteDoc.original_filename}'</strong>? This action cannot be undone and will delete the physical file.
+              Are you sure you want to permanently delete <strong className="text-slate-200">&apos;{confirmDeleteDoc.original_filename}&apos;</strong>? This action cannot be undone and will delete the physical file.
             </p>
             <div className="flex items-center justify-end space-x-3">
               <button

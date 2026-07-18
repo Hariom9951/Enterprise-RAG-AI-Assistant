@@ -31,6 +31,7 @@ pytestmark = pytest.mark.asyncio
 # Helpers
 # =============================================================================
 
+
 async def _register(client: AsyncClient, data: dict[str, Any] | None = None) -> Any:
     """Register a user and return the HTTP response."""
     payload = data or VALID_USER.copy()
@@ -57,6 +58,7 @@ async def _register_and_login(client: AsyncClient) -> str:
 # Registration Tests
 # =============================================================================
 
+
 class TestRegister:
     """Tests for POST /api/v1/auth/register"""
 
@@ -78,7 +80,9 @@ class TestRegister:
         assert "hashed_password" not in data
         assert "password" not in data
 
-    async def test_register_duplicate_email_returns_409(self, client: AsyncClient) -> None:
+    async def test_register_duplicate_email_returns_409(
+        self, client: AsyncClient
+    ) -> None:
         """Registering with an already-used email returns HTTP 409 Conflict."""
         await _register(client)
         response = await _register(client)  # Same email again
@@ -86,24 +90,32 @@ class TestRegister:
         error = response.json()["error"]
         assert error["code"] == "CONFLICT"
 
-    async def test_register_weak_password_returns_422(self, client: AsyncClient) -> None:
+    async def test_register_weak_password_returns_422(
+        self, client: AsyncClient
+    ) -> None:
         """A password that fails the strength policy returns HTTP 422."""
         payload = {**VALID_USER, "password": "weakpass"}
         response = await _register(client, payload)
         assert response.status_code == 422, response.text
 
-    async def test_register_invalid_email_returns_422(self, client: AsyncClient) -> None:
+    async def test_register_invalid_email_returns_422(
+        self, client: AsyncClient
+    ) -> None:
         """An invalid email format returns HTTP 422."""
         payload = {**VALID_USER, "email": "not-an-email"}
         response = await _register(client, payload)
         assert response.status_code == 422, response.text
 
-    async def test_register_missing_fields_returns_422(self, client: AsyncClient) -> None:
+    async def test_register_missing_fields_returns_422(
+        self, client: AsyncClient
+    ) -> None:
         """Missing required fields return HTTP 422."""
         response = await client.post("/api/v1/auth/register", json={"email": "x@x.com"})
         assert response.status_code == 422, response.text
 
-    async def test_register_blank_full_name_returns_422(self, client: AsyncClient) -> None:
+    async def test_register_blank_full_name_returns_422(
+        self, client: AsyncClient
+    ) -> None:
         """A whitespace-only full_name returns HTTP 422."""
         payload = {**VALID_USER, "email": "unique@example.com", "full_name": "   "}
         response = await _register(client, payload)
@@ -113,6 +125,7 @@ class TestRegister:
 # =============================================================================
 # Login Tests
 # =============================================================================
+
 
 class TestLogin:
     """Tests for POST /api/v1/auth/login"""
@@ -162,12 +175,16 @@ class TestLogin:
             "/api/v1/auth/login",
             json={"email": "nobody@example.com", "password": VALID_USER["password"]},
         )
-        assert resp_bad_pw.json()["error"]["message"] == resp_bad_email.json()["error"]["message"]
+        assert (
+            resp_bad_pw.json()["error"]["message"]
+            == resp_bad_email.json()["error"]["message"]
+        )
 
 
 # =============================================================================
 # Refresh Token Tests
 # =============================================================================
+
 
 class TestRefresh:
     """Tests for POST /api/v1/auth/refresh"""
@@ -196,11 +213,13 @@ class TestRefresh:
 
         refresh_resp = await client.post(
             "/api/v1/auth/refresh",
-            json={"refresh_token": access_token},   # Wrong token type
+            json={"refresh_token": access_token},  # Wrong token type
         )
         assert refresh_resp.status_code == 401, refresh_resp.text
 
-    async def test_refresh_with_invalid_token_returns_401(self, client: AsyncClient) -> None:
+    async def test_refresh_with_invalid_token_returns_401(
+        self, client: AsyncClient
+    ) -> None:
         """A tampered or malformed refresh token returns HTTP 401."""
         response = await client.post(
             "/api/v1/auth/refresh",
@@ -212,6 +231,7 @@ class TestRefresh:
 # =============================================================================
 # Protected Route Tests
 # =============================================================================
+
 
 class TestGetMe:
     """Tests for GET /api/v1/users/me"""
@@ -237,12 +257,16 @@ class TestGetMe:
         assert data["full_name"] == VALID_USER["full_name"]
         assert "hashed_password" not in data
 
-    async def test_get_me_unauthenticated_returns_401(self, client: AsyncClient) -> None:
+    async def test_get_me_unauthenticated_returns_401(
+        self, client: AsyncClient
+    ) -> None:
         """A request without an Authorization header returns HTTP 401."""
         response = await client.get("/api/v1/users/me")
         assert response.status_code == 401, response.text
 
-    async def test_get_me_with_invalid_token_returns_401(self, client: AsyncClient) -> None:
+    async def test_get_me_with_invalid_token_returns_401(
+        self, client: AsyncClient
+    ) -> None:
         """A request with a malformed token returns HTTP 401."""
         response = await client.get(
             "/api/v1/users/me",
@@ -250,7 +274,9 @@ class TestGetMe:
         )
         assert response.status_code == 401, response.text
 
-    async def test_get_me_with_refresh_token_returns_401(self, client: AsyncClient) -> None:
+    async def test_get_me_with_refresh_token_returns_401(
+        self, client: AsyncClient
+    ) -> None:
         """Using a refresh token in the Authorization header must fail (wrong token type)."""
         await _register(client)
         login_resp = await _login(client)

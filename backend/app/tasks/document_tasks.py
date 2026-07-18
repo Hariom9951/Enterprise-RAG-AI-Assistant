@@ -96,11 +96,13 @@ async def _async_process_document(doc_id: uuid.UUID) -> dict[str, Any]:
 
         # 5. Semantic Chunking & Metadata Enrichment
         from app.services.chunking_service import ChunkingService
+
         chunker = ChunkingService()
         await chunker.chunk_document(db, doc_id)
 
         # 6. Vector Embedding Generation
         from app.services.embedding_service import EmbeddingService
+
         embedder = EmbeddingService()
         await embedder.embed_document_chunks(db, doc_id)
 
@@ -137,7 +139,9 @@ def process_document(self: Task, doc_id_str: str) -> dict[str, Any]:
 
     try:
         # Execute async processing loop in helper thread
-        return cast(dict[str, Any], run_async_in_thread(_async_process_document(doc_id)))
+        return cast(
+            dict[str, Any], run_async_in_thread(_async_process_document(doc_id))
+        )
     except Exception as exc:
         logger.error(f"Error processing document {doc_id_str}: {exc}")
 
@@ -189,8 +193,11 @@ def embed_document(self: Task, doc_id_str: str) -> dict[str, Any]:
                 raise ValueError(f"Document {doc_id} not found.")
 
             from app.services.embedding_service import EmbeddingService
+
             embedder = EmbeddingService()
-            await embedder.embed_document_chunks(db, doc_id, progress_callback=progress_callback)
+            await embedder.embed_document_chunks(
+                db, doc_id, progress_callback=progress_callback
+            )
 
     try:
         run_async_in_thread(_async_embed())
@@ -198,6 +205,7 @@ def embed_document(self: Task, doc_id_str: str) -> dict[str, Any]:
     except Exception as exc:
         logger.error(f"Error embedding document {doc_id_str}: {exc}")
         from celery.exceptions import Retry
+
         try:
             self.retry(exc=exc)
             raise exc
@@ -206,3 +214,44 @@ def embed_document(self: Task, doc_id_str: str) -> dict[str, Any]:
         except Exception as retry_exc:
             # We don't mark document status as FAILED for manual reruns, but we log the retry exhaust
             raise retry_exc
+
+
+@celery_app.task(name="app.tasks.cleanup_temp_storage")
+def cleanup_temp_storage() -> dict[str, Any]:
+    """
+    Remove temporary files from settings.storage_dir/temp that are older than 24 hours.
+    This periodic task is intended to be executed daily by Celery Beat.
+    """
+    import shutil
+    from datetime import datetime, timedelta
+
+    from app.config.settings import settings
+
+    temp_dir = os.path.join(settings.storage_dir, "temp")
+    if not os.path.exists(temp_dir):
+        return {"status": "skipped", "reason": "directory does not exist"}
+
+    now = datetime.now()
+    cutoff = now - timedelta(hours=24)
+    removed_count = 0
+    errors_count = 0
+
+    for item in os.listdir(temp_dir):
+        path = os.path.join(temp_dir, item)
+        try:
+            mtime = datetime.fromtimestamp(os.path.getmtime(path))
+            if mtime < cutoff:
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+                removed_count += 1
+        except Exception as exc:
+            logger.error(f"Failed to delete temp item {path}: {exc}")
+            errors_count += 1
+
+    logger.info(
+        f"Daily temporary storage cleanup complete. Removed: {removed_count}, Errors: {errors_count}",
+        extra={"log_type": "worker"},
+    )
+    return {"status": "success", "removed": removed_count, "errors": errors_count}

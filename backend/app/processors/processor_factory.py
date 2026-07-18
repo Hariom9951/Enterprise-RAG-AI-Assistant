@@ -82,6 +82,7 @@ class ProcessorFactory:
         module_path, class_name = dotted_path.rsplit(".", 1)
 
         import importlib
+
         module = importlib.import_module(module_path)
         cls: type[BaseProcessor] = getattr(module, class_name)
         return cls()

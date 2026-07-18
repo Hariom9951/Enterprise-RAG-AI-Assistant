@@ -19,7 +19,7 @@ function formatTime(ms: number): string {
 function StatusStatCard({ label, value, icon: Icon, color }: {
   label: string;
   value: string | number;
-  icon: any;
+  icon: React.ComponentType<{ className?: string }>;
   color: string;
 }) {
   return (
@@ -51,8 +51,8 @@ export default function EmbeddingStatusPage({ params }: { params: Promise<{ id: 
       const data = await documentsApi.getEmbeddingStatus(docId);
       setStatus(data);
       setError(null);
-    } catch (e: any) {
-      const msg = e?.error?.message ?? "Failed to load embedding status.";
+    } catch (e: unknown) {
+      const msg = (e as { error?: { message?: string } })?.error?.message ?? "Failed to load embedding status.";
       setError(msg);
     } finally {
       setLoading(false);
@@ -61,7 +61,10 @@ export default function EmbeddingStatusPage({ params }: { params: Promise<{ id: 
 
   // Initial load
   useEffect(() => {
-    fetchStatus();
+    const timer = setTimeout(() => {
+      fetchStatus();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchStatus]);
 
   // Auto-polling for active execution states
@@ -80,8 +83,9 @@ export default function EmbeddingStatusPage({ params }: { params: Promise<{ id: 
     try {
       await documentsApi.embed(docId);
       await fetchStatus();
-    } catch (e: any) {
-      alert(e?.error?.message ?? "Failed to queue embedding task.");
+    } catch (e: unknown) {
+      const msg = (e as { error?: { message?: string } })?.error?.message ?? "Failed to queue embedding task.";
+      alert(msg);
     } finally {
       setTriggering(false);
     }

@@ -182,7 +182,9 @@ class ChunkingService:
                                 heading_level=current_heading_level,
                                 language="und",
                                 metadata={},
-                                sha256_hash=hashlib.sha256(part.encode("utf-8")).hexdigest(),
+                                sha256_hash=hashlib.sha256(
+                                    part.encode("utf-8")
+                                ).hexdigest(),
                             )
                         )
                         chunk_index += 1
@@ -362,9 +364,7 @@ class ChunkingService:
         associated with this document_id before inserting the new ones.
         """
         # 1. Fetch document and text
-        result = await db.execute(
-            select(Document).where(Document.id == document_id)
-        )
+        result = await db.execute(select(Document).where(Document.id == document_id))
         doc = result.scalar_one_or_none()
         if doc is None:
             raise ValueError(f"Document {document_id} not found.")
@@ -377,8 +377,11 @@ class ChunkingService:
 
         # Lazy raise is active, so we query ProcessedDocument explicitly
         from app.models.processed_document import ProcessedDocument
+
         pd_result = await db.execute(
-            select(ProcessedDocument).where(ProcessedDocument.document_id == document_id)
+            select(ProcessedDocument).where(
+                ProcessedDocument.document_id == document_id
+            )
         )
         pd = pd_result.scalar_one_or_none()
         if pd is None:
@@ -401,7 +404,9 @@ class ChunkingService:
         for rc in raw_chunks:
             # Skip if this chunk is a duplicate within this run
             if rc.sha256_hash in seen_hashes:
-                logger.debug(f"Skipping duplicate chunk hash {rc.sha256_hash} in document {document_id}.")
+                logger.debug(
+                    f"Skipping duplicate chunk hash {rc.sha256_hash} in document {document_id}."
+                )
                 continue
 
             seen_hashes.add(rc.sha256_hash)
@@ -446,5 +451,7 @@ class ChunkingService:
         for sc in stored_chunks:
             await db.refresh(sc)
 
-        logger.info(f"Generated and persisted {len(stored_chunks)} chunks for document {document_id}.")
+        logger.info(
+            f"Generated and persisted {len(stored_chunks)} chunks for document {document_id}."
+        )
         return [ChunkResponse.model_validate(sc) for sc in stored_chunks]

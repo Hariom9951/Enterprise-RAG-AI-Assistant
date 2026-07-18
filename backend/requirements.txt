@@ -88,3 +88,9 @@ tiktoken==0.8.0                    # Fast, reproducible tokenization
 sentence-transformers==3.0.1       # Sentence embeddings from Hugging Face
 pgvector==0.3.2                    # PostgreSQL pgvector integration for SQLAlchemy
 
+# -----------------------------------------------------------------------------
+# Phase 12: Production Hardening & Monitoring
+# -----------------------------------------------------------------------------
+psutil==6.0.0                      # Process and system utility metrics
+
+

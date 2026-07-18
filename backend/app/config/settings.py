@@ -11,7 +11,7 @@ Uses pydantic-settings to:
 """
 
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False,        # Allow both APP_NAME and app_name
-        extra="ignore",              # Ignore unknown env vars silently
+        case_sensitive=False,  # Allow both APP_NAME and app_name
+        extra="ignore",  # Ignore unknown env vars silently
     )
 
     # -------------------------------------------------------------------------
@@ -222,9 +222,136 @@ class Settings(BaseSettings):
     )
 
     # -------------------------------------------------------------------------
+    # Phase 9: Enterprise RAG Pipeline
+    # -------------------------------------------------------------------------
+    llm_provider: str = Field(
+        default="gemini",
+        description="The primary LLM provider to use: 'gemini', 'openai', or 'ollama'.",
+    )
+    gemini_api_key: str | None = Field(
+        default=None,
+        description="API Key for Google Gemini services.",
+    )
+    openai_api_key: str | None = Field(
+        default=None,
+        description="API Key for OpenAI services.",
+    )
+    rag_top_k: int = Field(
+        default=5,
+        ge=1,
+        description="Default top-k chunks to retrieve for context assembly.",
+    )
+    rag_max_context_tokens: int = Field(
+        default=4000,
+        ge=500,
+        description="Maximum token budget for context prompt payload.",
+    )
+    rag_temperature: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=2.0,
+        description="Temperature for answer generation.",
+    )
+    rag_max_output_tokens: int = Field(
+        default=1000,
+        ge=50,
+        description="Maximum output tokens for answer generation.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Phase 10: Enterprise Conversational AI Interface
+    # -------------------------------------------------------------------------
+    chat_max_history: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum conversational query rounds to preserve in short-term history memory.",
+    )
+    chat_max_tokens: int = Field(
+        default=4000,
+        ge=500,
+        description="Maximum token budget for chat history context injection.",
+    )
+    stream_timeout: float = Field(
+        default=30.0,
+        ge=1.0,
+        description="HTTP connection streaming response timeout threshold in seconds.",
+    )
+    stream_chunk_size: int = Field(
+        default=512,
+        ge=1,
+        description="Chunk size configuration for SSE transmission blocks.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Phase 11: Enterprise AI Agents & Tool Calling
+    # -------------------------------------------------------------------------
+    agent_max_tool_calls: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum number of tool calls allowed per agent run.",
+    )
+    agent_tool_timeout_s: float = Field(
+        default=15.0,
+        ge=1.0,
+        description="Per-tool execution timeout in seconds.",
+    )
+    agent_loop_budget_s: float = Field(
+        default=60.0,
+        ge=5.0,
+        description="Total wall-clock budget for the entire agent run in seconds.",
+    )
+    agent_max_retries: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Maximum retry attempts per tool call on transient failures.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Phase 12: Production Hardening, Caching, & Monitoring
+    # -------------------------------------------------------------------------
+    enable_redis_caching: bool = Field(
+        default=True,
+        description="Enable query caching in Redis.",
+    )
+    redis_cache_ttl_seconds: int = Field(
+        default=3600,
+        ge=0,
+        description="Time to live for Redis cache records.",
+    )
+    rate_limit_requests_per_minute: int = Field(
+        default=60,
+        ge=1,
+        description="Maximum requests allowed per client IP per minute.",
+    )
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        description="Rate limit evaluation sliding window in seconds.",
+    )
+    max_request_body_size_bytes: int = Field(
+        default=2097152,  # 2MB
+        ge=1024,
+        description="Maximum allowed HTTP request payload size in bytes.",
+    )
+    database_pool_size: int = Field(
+        default=10,
+        ge=1,
+        description="SQLAlchemy DB pool size.",
+    )
+    database_max_overflow: int = Field(
+        default=20,
+        ge=0,
+        description="SQLAlchemy DB max overflow.",
+    )
+
+    # -------------------------------------------------------------------------
     # Validators
     # -------------------------------------------------------------------------
-    @field_validator("allowed_origins", "allowed_methods", "allowed_headers", mode="before")
+    @field_validator(
+        "allowed_origins", "allowed_methods", "allowed_headers", mode="before"
+    )
     @classmethod
     def parse_comma_separated(cls, value: str | list) -> list[str]:
         """Allow comma-separated strings from env vars, e.g. ALLOWED_ORIGINS=a,b,c."""
@@ -234,15 +361,26 @@ class Settings(BaseSettings):
 
     @field_validator("secret_key")
     @classmethod
-    def validate_secret_key(cls, value: str) -> str:
-        """Warn loudly if the default secret key is used outside development."""
-        if value == "change-me-in-production":
-            import warnings
-            warnings.warn(
-                "SECRET_KEY is set to the default placeholder value. "
-                "This is insecure and MUST be changed before any production deployment.",
-                stacklevel=2,
-            )
+    def validate_secret_key(cls, value: str, info: Any) -> str:
+        """Prevent starting in production if the default secret key is used."""
+        # Use info.data to get environment if available, otherwise read via env or direct field access
+        if value == "change-me-in-production" or "change-me" in value:
+            import os
+
+            env = os.environ.get("ENVIRONMENT", "development").lower()
+            if env == "production":
+                raise ValueError(
+                    "SECRET_KEY cannot be a default placeholder in production. "
+                    "You MUST set a strong secret key using ENVIRONMENT variable."
+                )
+            else:
+                import warnings
+
+                warnings.warn(
+                    "SECRET_KEY is set to the default placeholder value. "
+                    "This is insecure and MUST be changed before any production deployment.",
+                    stacklevel=2,
+                )
         return value
 
     # -------------------------------------------------------------------------

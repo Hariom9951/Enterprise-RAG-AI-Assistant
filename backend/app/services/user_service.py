@@ -49,9 +49,7 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     Returns:
         The ``User`` ORM instance, or ``None`` if not found.
     """
-    result = await db.execute(
-        select(User).where(User.email == email.lower().strip())
-    )
+    result = await db.execute(select(User).where(User.email == email.lower().strip()))
     return result.scalar_one_or_none()
 
 
@@ -83,10 +81,10 @@ async def create_user(
         full_name=full_name.strip(),
         email=email.lower().strip(),
         hashed_password=hashed_password,
-        is_verified=True,   # Phase 5: set False and send verification email
+        is_verified=True,  # Phase 5: set False and send verification email
     )
     db.add(user)
-    await db.flush()   # Assigns the generated UUID without committing
+    await db.flush()  # Assigns the generated UUID without committing
     await db.refresh(user)
 
     logger.info(

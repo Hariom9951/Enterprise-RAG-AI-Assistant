@@ -37,6 +37,7 @@ from app.services.user_service import create_user, get_user_by_email, get_user_b
 # Registration
 # =============================================================================
 
+
 async def register_user(db: AsyncSession, payload: RegisterRequest) -> User:
     """
     Register a new user account.
@@ -77,7 +78,7 @@ async def register_user(db: AsyncSession, payload: RegisterRequest) -> User:
 
     logger.info(
         "User registration successful",
-        extra={"user_id": str(user.id), "email": user.email},
+        extra={"log_type": "audit", "user_id": str(user.id), "email": user.email},
     )
     return user
 
@@ -85,6 +86,7 @@ async def register_user(db: AsyncSession, payload: RegisterRequest) -> User:
 # =============================================================================
 # Login
 # =============================================================================
+
 
 async def authenticate_user(db: AsyncSession, payload: LoginRequest) -> TokenResponse:
     """
@@ -135,7 +137,7 @@ async def authenticate_user(db: AsyncSession, payload: LoginRequest) -> TokenRes
 
     logger.info(
         "User login successful",
-        extra={"user_id": user_id_str, "email": user.email},
+        extra={"log_type": "audit", "user_id": user_id_str, "email": user.email},
     )
 
     return TokenResponse(
@@ -149,6 +151,7 @@ async def authenticate_user(db: AsyncSession, payload: LoginRequest) -> TokenRes
 # =============================================================================
 # Token Refresh
 # =============================================================================
+
 
 async def refresh_access_token(
     db: AsyncSession,

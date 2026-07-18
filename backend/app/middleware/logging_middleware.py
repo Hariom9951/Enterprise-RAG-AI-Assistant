@@ -52,6 +52,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         logger.info(
             f"--> {request.method} {request.url.path}",
             extra={
+                "log_type": "api",
                 "request_id": request_id,
                 "method": request.method,
                 "path": request.url.path,
@@ -76,6 +77,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         log_fn(
             f"<-- {request.method} {request.url.path}  {response.status_code}  {elapsed_ms:.2f}ms",
             extra={
+                "log_type": "api",
                 "request_id": request_id,
                 "method": request.method,
                 "path": request.url.path,

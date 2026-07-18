@@ -27,43 +27,45 @@ client = TestClient(app)
 # Root Endpoint Tests
 # =============================================================================
 
+
 class TestRootEndpoint:
     """Tests for GET /api/v1/"""
 
     def test_root_returns_200(self) -> None:
         """Root endpoint should return HTTP 200 OK."""
         response = client.get("/api/v1/")
-        assert response.status_code == 200, (
-            f"Expected 200, got {response.status_code}. Body: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200, got {response.status_code}. Body: {response.text}"
 
     def test_root_returns_message(self) -> None:
         """Root endpoint should return the expected welcome message."""
         response = client.get("/api/v1/")
         data = response.json()
         assert "message" in data, "Response body must contain 'message' key."
-        assert data["message"] == "Enterprise RAG AI Assistant API", (
-            f"Unexpected message value: {data['message']!r}"
-        )
+        assert (
+            data["message"] == "Enterprise RAG AI Assistant API"
+        ), f"Unexpected message value: {data['message']!r}"
 
     def test_root_content_type_is_json(self) -> None:
         """Root endpoint should respond with application/json content type."""
         response = client.get("/api/v1/")
-        assert "application/json" in response.headers.get("content-type", ""), (
-            "Expected Content-Type: application/json"
-        )
+        assert "application/json" in response.headers.get(
+            "content-type", ""
+        ), "Expected Content-Type: application/json"
 
     def test_root_has_request_id_header(self) -> None:
         """Every response should include an X-Request-ID header (from logging middleware)."""
         response = client.get("/api/v1/")
-        assert "x-request-id" in response.headers, (
-            "Expected X-Request-ID header to be present in every response."
-        )
+        assert (
+            "x-request-id" in response.headers
+        ), "Expected X-Request-ID header to be present in every response."
 
 
 # =============================================================================
 # Health Endpoint Tests
 # =============================================================================
+
 
 class TestHealthEndpoint:
     """Tests for GET /api/v1/health"""
@@ -71,23 +73,29 @@ class TestHealthEndpoint:
     def test_health_returns_200(self) -> None:
         """Health endpoint should return HTTP 200 OK."""
         response = client.get("/api/v1/health")
-        assert response.status_code == 200, (
-            f"Expected 200, got {response.status_code}. Body: {response.text}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200, got {response.status_code}. Body: {response.text}"
 
     def test_health_status_is_healthy(self) -> None:
         """Health status field should be 'healthy' in Phase 1."""
         response = client.get("/api/v1/health")
         data = response.json()
-        assert data.get("status") == "healthy", (
-            f"Expected status='healthy', got: {data.get('status')!r}"
-        )
+        assert (
+            data.get("status") == "healthy"
+        ), f"Expected status='healthy', got: {data.get('status')!r}"
 
     def test_health_response_has_required_fields(self) -> None:
         """Health response must include all required schema fields."""
         response = client.get("/api/v1/health")
         data = response.json()
-        required_fields = {"status", "version", "environment", "timestamp", "components"}
+        required_fields = {
+            "status",
+            "version",
+            "environment",
+            "timestamp",
+            "components",
+        }
         missing = required_fields - data.keys()
         assert not missing, f"Health response missing fields: {missing}"
 
@@ -95,25 +103,25 @@ class TestHealthEndpoint:
         """Version field should be a non-empty string."""
         response = client.get("/api/v1/health")
         version = response.json().get("version")
-        assert isinstance(version, str) and version, (
-            f"Expected non-empty string for version, got: {version!r}"
-        )
+        assert (
+            isinstance(version, str) and version
+        ), f"Expected non-empty string for version, got: {version!r}"
 
     def test_health_components_is_dict(self) -> None:
         """Components field should be a dictionary."""
         response = client.get("/api/v1/health")
         components = response.json().get("components")
-        assert isinstance(components, dict), (
-            f"Expected components to be a dict, got: {type(components)}"
-        )
+        assert isinstance(
+            components, dict
+        ), f"Expected components to be a dict, got: {type(components)}"
 
     def test_health_api_component_is_healthy(self) -> None:
         """The 'api' component should report healthy in Phase 1."""
         response = client.get("/api/v1/health")
         components = response.json().get("components", {})
-        assert components.get("api") == "healthy", (
-            f"Expected api component to be 'healthy', got: {components.get('api')!r}"
-        )
+        assert (
+            components.get("api") == "healthy"
+        ), f"Expected api component to be 'healthy', got: {components.get('api')!r}"
 
     def test_health_has_request_id_header(self) -> None:
         """Health response should include X-Request-ID header."""
@@ -124,6 +132,7 @@ class TestHealthEndpoint:
 # =============================================================================
 # CORS Tests
 # =============================================================================
+
 
 class TestCORSHeaders:
     """Verify CORS headers are present for allowed origins."""
@@ -138,6 +147,65 @@ class TestCORSHeaders:
             },
         )
         # Starlette's TestClient follows redirects; check header presence.
-        assert response.status_code in (200, 204), (
-            f"Expected 200 or 204 for OPTIONS preflight, got {response.status_code}"
+        assert response.status_code in (
+            200,
+            204,
+        ), f"Expected 200 or 204 for OPTIONS preflight, got {response.status_code}"
+
+
+# =============================================================================
+# Phase 12 Endpoints & Security Tests
+# =============================================================================
+
+
+class TestProductionHardening:
+    """Verify Phase 12 health probes, metrics, and security middleware."""
+
+    def test_liveness_probe_returns_200(self) -> None:
+        """Liveness probe (/live) should return HTTP 200 and status 'live'."""
+        response = client.get("/api/v1/live")
+        assert response.status_code == 200
+        assert response.json() == {"status": "live"}
+
+    def test_readiness_probe_returns_200(self) -> None:
+        """Readiness probe (/ready) should return HTTP 200 and status 'ready'."""
+        response = client.get("/api/v1/ready")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ready"}
+
+    def test_metrics_endpoint_returns_prometheus_format(self) -> None:
+        """Metrics endpoint (/metrics) should return text/plain Prometheus gauges."""
+        response = client.get("/api/v1/metrics")
+        assert response.status_code == 200
+        assert "text/plain" in response.headers["content-type"]
+        content = response.text
+        assert "cpu_utilization_ratio" in content
+        assert "memory_rss_bytes" in content
+        assert "redis_queue_length" in content
+
+    def test_security_headers_middleware(self) -> None:
+        """Verify that standard security headers are attached by the middleware."""
+        response = client.get("/api/v1/live")
+        assert response.status_code == 200
+        assert response.headers.get("x-frame-options") == "DENY"
+        assert response.headers.get("x-content-type-options") == "nosniff"
+        assert (
+            response.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
         )
+        assert "content-security-policy" in response.headers
+
+    def test_payload_size_limiter_blocks_large_requests(self) -> None:
+        """Verify that requests exceeding payload size limits are blocked with 413."""
+        # Generate a large payload (> 2MB)
+        large_payload = "A" * (2 * 1024 * 1024 + 100)
+        # Call a non-upload endpoint with this payload
+        response = client.post(
+            "/api/v1/auth/login",
+            content=large_payload,
+            headers={
+                "Content-Length": str(len(large_payload)),
+                "Content-Type": "application/json",
+            },
+        )
+        assert response.status_code == 413
+        assert response.json()["error"]["code"] == "PAYLOAD_TOO_LARGE"

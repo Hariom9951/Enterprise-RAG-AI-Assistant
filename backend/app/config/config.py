@@ -81,6 +81,7 @@ RATE_LIMIT_PER_MINUTE: Final[int] = 60
 # Feature Flags (Placeholders — wire to LaunchDarkly / Unleash in Phase 2)
 # =============================================================================
 
+
 class FeatureFlags:
     """
     Static feature flags for Phase 1.
@@ -99,4 +100,4 @@ class FeatureFlags:
     ENABLE_SEMANTIC_SEARCH: bool = False
 
     #: Enable user authentication middleware.
-    ENABLE_AUTH: bool = True   # ✅ Activated in Phase 2
+    ENABLE_AUTH: bool = True  # ✅ Activated in Phase 2

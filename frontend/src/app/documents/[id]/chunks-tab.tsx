@@ -19,7 +19,7 @@ function ChunkStatCard({ label, value, subtext, icon: Icon, color }: {
   label: string;
   value: string | number;
   subtext?: string;
-  icon: any;
+  icon: React.ComponentType<{ className?: string }>;
   color: string;
 }) {
   return (
@@ -37,7 +37,7 @@ function ChunkStatCard({ label, value, subtext, icon: Icon, color }: {
 }
 
 // ─── Metadata Inspector ───────────────────────────────────────────────────────
-function MetadataInspector({ metadata }: { metadata: Record<string, any> }) {
+function MetadataInspector({ metadata }: { metadata: Record<string, unknown> }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -84,7 +84,7 @@ export default function ChunksTab({ documentId }: { documentId: string }) {
     try {
       const data = await documentsApi.getChunkSummary(documentId);
       setSummary(data);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Failed to load chunk summary", e);
     }
   }, [documentId]);
@@ -99,8 +99,8 @@ export default function ChunksTab({ documentId }: { documentId: string }) {
         search: debouncedSearch,
       });
       setChunks(data);
-    } catch (e: any) {
-      const msg = e?.error?.message ?? "Failed to fetch document chunks.";
+    } catch (e: unknown) {
+      const msg = (e as { error?: { message?: string } })?.error?.message ?? "Failed to fetch document chunks.";
       setError(msg);
     } finally {
       setLoadingChunks(false);
@@ -109,11 +109,17 @@ export default function ChunksTab({ documentId }: { documentId: string }) {
   }, [documentId, offset, debouncedSearch]);
 
   useEffect(() => {
-    fetchSummary();
+    const timer = setTimeout(() => {
+      fetchSummary();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchSummary]);
 
   useEffect(() => {
-    fetchChunks();
+    const timer = setTimeout(() => {
+      fetchChunks();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchChunks]);
 
   // Delete handler
@@ -124,8 +130,9 @@ export default function ChunksTab({ documentId }: { documentId: string }) {
       await chunksApi.delete(chunkId);
       // Refresh both list and statistics
       await Promise.all([fetchSummary(), fetchChunks()]);
-    } catch (e: any) {
-      alert(e?.error?.message ?? "Failed to delete chunk.");
+    } catch (e: unknown) {
+      const msg = (e as { error?: { message?: string } })?.error?.message ?? "Failed to delete chunk.";
+      alert(msg);
     } finally {
       setDeletingId(null);
     }

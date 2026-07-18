@@ -48,7 +48,10 @@ class TestChunkerSplitting:
 
     def test_split_large_text(self, chunker: ChunkingService) -> None:
         # Construct long paragraphs
-        paragraph = "This is a long sentence repeated multiple times to ensure we exceed size limits. " * 30
+        paragraph = (
+            "This is a long sentence repeated multiple times to ensure we exceed size limits. "
+            * 30
+        )
         text = "\n\n".join([paragraph] * 3)  # Three large paragraphs
 
         chunks = chunker.split_text(text, chunk_size=150, chunk_overlap=20)
@@ -107,7 +110,9 @@ class TestChunkingIntegration:
         headers = {"Authorization": f"Bearer {token}"}
 
         # 2. Setup user and document
-        result_user = await db_session.execute(select(User).where(User.email == "chunktest@example.com"))
+        result_user = await db_session.execute(
+            select(User).where(User.email == "chunktest@example.com")
+        )
         user = result_user.scalar_one()
 
         doc_id = uuid.uuid4()
@@ -145,12 +150,16 @@ class TestChunkingIntegration:
 
         # 4. Verify Document processing status moved to PROCESSED
         await db_session.close()  # Reset cache
-        result_doc = await db_session.execute(select(Document).where(Document.id == doc_id))
+        result_doc = await db_session.execute(
+            select(Document).where(Document.id == doc_id)
+        )
         doc_updated = result_doc.scalar_one()
         assert doc_updated.processing_status == "COMPLETED"
 
         # 5. Verify Chunks were created in database
-        result_chunks = await db_session.execute(select(Chunk).where(Chunk.document_id == doc_id))
+        result_chunks = await db_session.execute(
+            select(Chunk).where(Chunk.document_id == doc_id)
+        )
         db_chunks = result_chunks.scalars().all()
         assert len(db_chunks) >= 2
         for chunk in db_chunks:
@@ -162,7 +171,9 @@ class TestChunkingIntegration:
             assert chunk.chunk_metadata["document_id"] == str(doc_id)
 
         # 6. Test GET /documents/{id}/chunks
-        resp_list = await client.get(f"/api/v1/documents/{doc_id}/chunks?limit=5", headers=headers)
+        resp_list = await client.get(
+            f"/api/v1/documents/{doc_id}/chunks?limit=5", headers=headers
+        )
         assert resp_list.status_code == 200, resp_list.text
         list_data = resp_list.json()
         assert len(list_data) >= 2
@@ -171,7 +182,9 @@ class TestChunkingIntegration:
         assert "text" in list_data[0]
 
         # 7. Test GET /documents/{id}/chunk-summary
-        resp_summary = await client.get(f"/api/v1/documents/{doc_id}/chunk-summary", headers=headers)
+        resp_summary = await client.get(
+            f"/api/v1/documents/{doc_id}/chunk-summary", headers=headers
+        )
         assert resp_summary.status_code == 200
         sum_data = resp_summary.json()
         assert sum_data["total_chunks"] == len(db_chunks)
@@ -182,16 +195,22 @@ class TestChunkingIntegration:
 
         # 8. Test GET /chunks/{id}
         target_chunk_id = db_chunks[0].id
-        resp_detail = await client.get(f"/api/v1/chunks/{target_chunk_id}", headers=headers)
+        resp_detail = await client.get(
+            f"/api/v1/chunks/{target_chunk_id}", headers=headers
+        )
         assert resp_detail.status_code == 200
         assert resp_detail.json()["id"] == str(target_chunk_id)
 
         # 9. Test DELETE /chunks/{id}
-        resp_del = await client.delete(f"/api/v1/chunks/{target_chunk_id}", headers=headers)
+        resp_del = await client.delete(
+            f"/api/v1/chunks/{target_chunk_id}", headers=headers
+        )
         assert resp_del.status_code == 204
 
         # Verify deletion
-        result_del = await db_session.execute(select(Chunk).where(Chunk.id == target_chunk_id))
+        result_del = await db_session.execute(
+            select(Chunk).where(Chunk.id == target_chunk_id)
+        )
         assert result_del.scalar_one_or_none() is None
 
         # Clean up physical file

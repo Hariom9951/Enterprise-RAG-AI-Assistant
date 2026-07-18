@@ -66,6 +66,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # JWT Token Creation
 # =============================================================================
 
+
 def _create_token(
     data: dict[str, Any],
     expires_delta: timedelta,
@@ -86,12 +87,14 @@ def _create_token(
     now = datetime.now(UTC)
     payload.update(
         {
-            "iat": now,                            # Issued-at
-            "exp": now + expires_delta,            # Expiry
-            "type": token_type,                    # Token kind discriminator
+            "iat": now,  # Issued-at
+            "exp": now + expires_delta,  # Expiry
+            "type": token_type,  # Token kind discriminator
         }
     )
-    return cast(str, jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm))
+    return cast(
+        str, jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    )
 
 
 def create_access_token(
@@ -142,6 +145,7 @@ def create_refresh_token(subject: str) -> str:
 # =============================================================================
 # JWT Decoding & Validation
 # =============================================================================
+
 
 def decode_token(token: str, expected_type: str = "access") -> dict[str, Any]:
     """

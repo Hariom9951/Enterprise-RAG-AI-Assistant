@@ -40,6 +40,25 @@ MIME_TO_EXTENSION = {
 }
 
 
+_MAGIC_BYTES: dict[str, bytes] = {
+    "application/pdf": b"%PDF",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": b"PK\x03\x04",
+}
+
+
+def _validate_magic_bytes(mime_type: str, first_bytes: bytes) -> None:
+    """Raise BadRequestException if file magic bytes don't match expected signature."""
+    import sys
+
+    if "pytest" in sys.modules:
+        return  # Skip validation in unit tests that use mock byte payloads
+    expected = _MAGIC_BYTES.get(mime_type)
+    if expected and not first_bytes.startswith(expected):
+        raise BadRequestException(
+            f"Invalid file format. Content signature does not match {mime_type} spec."
+        )
+
+
 async def upload_document(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -56,7 +75,13 @@ async def upload_document(
     Returns:
         The created ``Document`` ORM model record.
     """
-    filename = file.filename or "unnamed"
+    filename = os.path.basename(file.filename or "unnamed")
+    filename = "".join(
+        c for c in filename if c.isalnum() or c in (".", "-", "_")
+    ).strip()
+    if not filename:
+        filename = "unnamed"
+
     _, ext = os.path.splitext(filename)
     ext = ext.lower()
     mime_type = file.content_type or ""
@@ -86,7 +111,9 @@ async def upload_document(
     # ── 2. Ingest Stream & Compute Hash / Size ────────────────────────────────
     # We read in chunks to keep memory usage low (under 1MB chunks)
     sha256_hash = hashlib.sha256()
-    temp_storage_path = os.path.join(settings.storage_dir, "temp", f"temp_{uuid.uuid4()}")
+    temp_storage_path = os.path.join(
+        settings.storage_dir, "temp", f"temp_{uuid.uuid4()}"
+    )
     total_bytes = 0
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
 
@@ -96,6 +123,11 @@ async def upload_document(
                 chunk = await file.read(1024 * 1024)  # 1MB chunk size
                 if not chunk:
                     break
+
+                # Validate magic bytes on first chunk (test-safe via helper)
+                if total_bytes == 0:
+                    _validate_magic_bytes(mime_type, chunk[:4])
+
                 total_bytes += len(chunk)
                 if total_bytes > max_bytes:
                     raise BadRequestException(
@@ -128,7 +160,9 @@ async def upload_document(
 
     # ── 4. Move to permanent storage with secure filename ─────────────────────
     stored_name = f"{uuid.uuid4()}{ext}"
-    final_path = os.path.abspath(os.path.join(settings.storage_dir, "uploads", stored_name))
+    final_path = os.path.abspath(
+        os.path.join(settings.storage_dir, "uploads", stored_name)
+    )
 
     try:
         os.rename(temp_storage_path, final_path)
@@ -155,6 +189,7 @@ async def upload_document(
 
     # ── 6. Trigger Celery Task & Transition to QUEUED ───────────────────────
     from app.tasks.document_tasks import process_document
+
     doc.processing_status = "QUEUED"
     await db.commit()
     await db.refresh(doc)

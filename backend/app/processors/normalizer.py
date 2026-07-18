@@ -27,9 +27,9 @@ import unicodedata
 _CRLF = re.compile(r"\r\n|\r")
 _CONTROL_CHARS = re.compile(
     r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f"  # C0 excluding \t(\x09) \n(\x0a)
-    r"\x80-\x9f]"                          # C1 control block
+    r"\x80-\x9f]"  # C1 control block
 )
-_MULTI_SPACES = re.compile(r"[^\S\n]+")      # Multiple spaces/tabs on a line
+_MULTI_SPACES = re.compile(r"[^\S\n]+")  # Multiple spaces/tabs on a line
 _EXCESS_BLANK_LINES = re.compile(r"\n{3,}")  # More than two consecutive newlines
 
 

@@ -19,12 +19,14 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from loguru import logger
 
 # =============================================================================
 # Base Exception
 # =============================================================================
+
 
 class AppException(Exception):
     """
@@ -58,10 +60,13 @@ class AppException(Exception):
 # Concrete Exception Classes
 # =============================================================================
 
+
 class NotFoundException(AppException):
     """Raised when a requested resource cannot be found (404)."""
 
-    def __init__(self, message: str = "Resource not found.", detail: Any = None) -> None:
+    def __init__(
+        self, message: str = "Resource not found.", detail: Any = None
+    ) -> None:
         super().__init__(
             message=message,
             status_code=status.HTTP_404_NOT_FOUND,
@@ -85,7 +90,9 @@ class BadRequestException(AppException):
 class UnauthorizedException(AppException):
     """Raised when the client is not authenticated (401)."""
 
-    def __init__(self, message: str = "Authentication required.", detail: Any = None) -> None:
+    def __init__(
+        self, message: str = "Authentication required.", detail: Any = None
+    ) -> None:
         super().__init__(
             message=message,
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -133,7 +140,9 @@ class UnprocessableEntityException(AppException):
 class ServiceUnavailableException(AppException):
     """Raised when a downstream service is temporarily unavailable (503)."""
 
-    def __init__(self, message: str = "Service temporarily unavailable.", detail: Any = None) -> None:
+    def __init__(
+        self, message: str = "Service temporarily unavailable.", detail: Any = None
+    ) -> None:
         super().__init__(
             message=message,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -145,6 +154,7 @@ class ServiceUnavailableException(AppException):
 # =============================================================================
 # Response Helper
 # =============================================================================
+
 
 def _error_response(
     status_code: int,
@@ -168,6 +178,7 @@ def _error_response(
 # =============================================================================
 # Exception Handlers
 # =============================================================================
+
 
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """Handle all AppException subclasses uniformly."""
@@ -196,9 +207,37 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Format input validation errors in a uniform JSON structure."""
+    logger.warning(
+        "Request validation failed",
+        extra={
+            "errors": exc.errors(),
+            "path": str(request.url),
+            "method": request.method,
+        },
+    )
+    # Extract clean details
+    details = []
+    for err in exc.errors():
+        loc = " -> ".join(str(item) for item in err.get("loc", []))
+        msg = err.get("msg", "Unknown error")
+        details.append({"location": loc, "message": msg})
+
+    return _error_response(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        code="VALIDATION_ERROR",
+        message="Request validation failed.",
+        detail=details,
+    )
+
+
 # =============================================================================
 # Registration Helper
 # =============================================================================
+
 
 def register_exception_handlers(app: FastAPI) -> None:
     """
@@ -207,5 +246,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     Call this from ``main.py`` after creating the ``app`` object.
     """
     app.add_exception_handler(AppException, app_exception_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(Exception, unhandled_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(Exception, unhandled_exception_handler)  # type: ignore[arg-type]
     logger.debug("Exception handlers registered.")

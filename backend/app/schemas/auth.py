@@ -21,6 +21,7 @@ from app.models.enums import UserRole
 # Shared Config
 # =============================================================================
 
+
 class _BaseSchema(BaseModel):
     """Base schema with consistent model configuration."""
 
@@ -52,6 +53,7 @@ def _validate_password_strength(value: str) -> str:
 # =============================================================================
 # Registration
 # =============================================================================
+
 
 class RegisterRequest(_BaseSchema):
     """
@@ -102,10 +104,13 @@ class RegisterRequest(_BaseSchema):
 # Login
 # =============================================================================
 
+
 class LoginRequest(_BaseSchema):
     """Request body for ``POST /api/v1/auth/login``."""
 
-    email: EmailStr = Field(..., description="Registered email address.", examples=["jane.doe@example.com"])
+    email: EmailStr = Field(
+        ..., description="Registered email address.", examples=["jane.doe@example.com"]
+    )
     password: str = Field(..., description="Account password.", examples=["Secure@123"])
 
 
@@ -113,15 +118,19 @@ class LoginRequest(_BaseSchema):
 # Token Refresh
 # =============================================================================
 
+
 class RefreshRequest(_BaseSchema):
     """Request body for ``POST /api/v1/auth/refresh``."""
 
-    refresh_token: str = Field(..., description="Valid refresh token obtained at login.")
+    refresh_token: str = Field(
+        ..., description="Valid refresh token obtained at login."
+    )
 
 
 # =============================================================================
 # Token Response
 # =============================================================================
+
 
 class TokenResponse(_BaseSchema):
     """
@@ -134,13 +143,16 @@ class TokenResponse(_BaseSchema):
 
     access_token: str = Field(..., description="Short-lived JWT access token.")
     refresh_token: str = Field(..., description="Long-lived JWT refresh token.")
-    token_type: str = Field(default="bearer", description="Token scheme (always 'bearer').")
+    token_type: str = Field(
+        default="bearer", description="Token scheme (always 'bearer')."
+    )
     expires_in: int = Field(..., description="Access token TTL in seconds.")
 
 
 # =============================================================================
 # User Responses
 # =============================================================================
+
 
 class UserResponse(_BaseSchema):
     """
@@ -157,4 +169,6 @@ class UserResponse(_BaseSchema):
     is_active: bool = Field(..., description="Whether the account is currently active.")
     is_verified: bool = Field(..., description="Whether the email has been verified.")
     created_at: datetime = Field(..., description="Account creation timestamp (UTC).")
-    updated_at: datetime = Field(..., description="Last profile update timestamp (UTC).")
+    updated_at: datetime = Field(
+        ..., description="Last profile update timestamp (UTC)."
+    )

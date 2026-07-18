@@ -31,6 +31,7 @@ from app.config.settings import settings
 # Engine
 # =============================================================================
 
+
 def _build_engine() -> AsyncEngine:
     """
     Construct the async SQLAlchemy engine from the configured DATABASE_URL.
@@ -53,8 +54,8 @@ def _build_engine() -> AsyncEngine:
     if is_postgres:
         engine_kwargs.update(
             {
-                "pool_size": 10,
-                "max_overflow": 20,
+                "pool_size": settings.database_pool_size,
+                "max_overflow": settings.database_max_overflow,
                 "pool_timeout": 30,
                 "pool_recycle": 1800,  # Recycle connections after 30 min
             }
@@ -79,6 +80,7 @@ AsyncSessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
 # =============================================================================
 # FastAPI Dependency
 # =============================================================================
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
@@ -109,6 +111,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 # =============================================================================
 # Startup / Shutdown Helpers (called from main.py lifespan)
 # =============================================================================
+
 
 async def verify_database_connection() -> None:
     """

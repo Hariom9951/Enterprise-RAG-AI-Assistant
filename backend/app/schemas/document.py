@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 class _BaseSchema(BaseModel):
     """Base schema config for documents."""
+
     model_config = {
         "from_attributes": True,
         "populate_by_name": True,

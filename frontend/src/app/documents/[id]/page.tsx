@@ -76,9 +76,11 @@ export default function DocumentDetailPage() {
     }
   }, [docId]);
 
-  // Initial load + polling for non-terminal statuses
   useEffect(() => {
-    fetchData();
+    const timer = setTimeout(() => {
+      fetchData();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchData]);
 
   useEffect(() => {

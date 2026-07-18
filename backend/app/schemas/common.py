@@ -21,6 +21,7 @@ T = TypeVar("T")
 # Base Response
 # =============================================================================
 
+
 class BaseResponse(BaseModel):
     """
     Base class for all API response models.
@@ -36,15 +37,21 @@ class BaseResponse(BaseModel):
 # Root & Informational
 # =============================================================================
 
+
 class MessageResponse(BaseResponse):
     """Simple message envelope returned by the root endpoint."""
 
-    message: str = Field(..., description="Human-readable message string.", examples=["Enterprise RAG AI Assistant API"])
+    message: str = Field(
+        ...,
+        description="Human-readable message string.",
+        examples=["Enterprise RAG AI Assistant API"],
+    )
 
 
 # =============================================================================
 # Health Check
 # =============================================================================
+
 
 class HealthStatus(BaseResponse):
     """Detailed health-check response with component statuses."""
@@ -54,8 +61,12 @@ class HealthStatus(BaseResponse):
         description="Overall service health: 'healthy' | 'degraded' | 'unhealthy'.",
         examples=["healthy"],
     )
-    version: str = Field(..., description="Current application version.", examples=["0.1.0"])
-    environment: str = Field(..., description="Deployment environment.", examples=["development"])
+    version: str = Field(
+        ..., description="Current application version.", examples=["0.1.0"]
+    )
+    environment: str = Field(
+        ..., description="Deployment environment.", examples=["development"]
+    )
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="UTC timestamp of the health-check response.",
@@ -74,11 +85,20 @@ class HealthStatus(BaseResponse):
 # Error
 # =============================================================================
 
+
 class ErrorDetail(BaseResponse):
     """Inner payload of an error response."""
 
-    code: str = Field(..., description="Machine-readable error code (SCREAMING_SNAKE_CASE).", examples=["RESOURCE_NOT_FOUND"])
-    message: str = Field(..., description="Human-readable error message.", examples=["The requested document was not found."])
+    code: str = Field(
+        ...,
+        description="Machine-readable error code (SCREAMING_SNAKE_CASE).",
+        examples=["RESOURCE_NOT_FOUND"],
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable error message.",
+        examples=["The requested document was not found."],
+    )
     detail: Any = Field(None, description="Optional extra context for debugging.")
 
 
@@ -91,6 +111,7 @@ class ErrorResponse(BaseResponse):
 # =============================================================================
 # Generic Paginated Response
 # =============================================================================
+
 
 class PaginatedResponse(BaseResponse, Generic[T]):
     """
@@ -119,6 +140,7 @@ class PaginatedResponse(BaseResponse, Generic[T]):
     ) -> PaginatedResponse[T]:
         """Factory method to build a paginated response without manual math."""
         import math
+
         return cls(
             items=items,
             total=total,

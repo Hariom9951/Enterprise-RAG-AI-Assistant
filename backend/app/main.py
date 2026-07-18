@@ -33,10 +33,16 @@ from app.core.logging import setup_logging
 from app.db.session import dispose_engine, verify_database_connection
 from app.middleware.cors import add_cors_middleware
 from app.middleware.logging_middleware import RequestLoggingMiddleware
+from app.middleware.rate_limit import RateLimitingMiddleware
+from app.middleware.security import (
+    RequestBodySizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 
 # =============================================================================
 # Lifespan Context Manager
 # =============================================================================
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -58,6 +64,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Ensure Phase 3 local storage directories exist.
     import os
+
     for folder in ["uploads", "processed", "failed", "temp"]:
         path = os.path.join(settings.storage_dir, folder)
         os.makedirs(path, exist_ok=True)
@@ -84,6 +91,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # =============================================================================
 # Application Factory
 # =============================================================================
+
 
 def create_app() -> FastAPI:
     """
@@ -117,6 +125,9 @@ def create_app() -> FastAPI:
     # ── 3. Register middleware (order matters — outermost registered last) ────
     add_cors_middleware(application)
     application.add_middleware(RequestLoggingMiddleware)
+    application.add_middleware(RequestBodySizeLimitMiddleware)
+    application.add_middleware(RateLimitingMiddleware)
+    application.add_middleware(SecurityHeadersMiddleware)
 
     # ── 4. Register global exception handlers ─────────────────────────────────
     register_exception_handlers(application)

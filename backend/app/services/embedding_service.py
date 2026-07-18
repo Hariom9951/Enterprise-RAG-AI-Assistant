@@ -46,7 +46,9 @@ class EmbeddingService:
                 if cls._model is None:
                     model_name = settings.embedding_model
                     device = settings.embedding_device
-                    logger.info(f"Loading SentenceTransformers model '{model_name}' on device '{device}'...")
+                    logger.info(
+                        f"Loading SentenceTransformers model '{model_name}' on device '{device}'..."
+                    )
                     start_time = time.perf_counter()
 
                     # Force model loading in a separate thread to prevent blocking ASGI event loop during startup
@@ -62,6 +64,7 @@ class EmbeddingService:
         """
         Asynchronously generate embeddings for a batch of texts using a threadpool.
         """
+        start_time = time.perf_counter()
         model = await self.get_model()
 
         # model.encode is synchronous and cpu-heavy; run in thread pool
@@ -72,6 +75,13 @@ class EmbeddingService:
             show_progress_bar=False,
             convert_to_numpy=True,
         )
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # Async import to prevent circular dependency
+        from app.services.cache_service import cache_service
+
+        await cache_service.record_latency("embedding", duration_ms)
+
         return [emb.tolist() for emb in embeddings]
 
     async def embed_document_chunks(
@@ -93,11 +103,15 @@ class EmbeddingService:
         chunks = list(result.scalars().all())
 
         if not chunks:
-            logger.warning(f"No chunks found for document {document_id}. Skipping embedding.")
+            logger.warning(
+                f"No chunks found for document {document_id}. Skipping embedding."
+            )
             return
 
         total_chunks = len(chunks)
-        logger.info(f"Generating embeddings for document {document_id} ({total_chunks} chunks)...")
+        logger.info(
+            f"Generating embeddings for document {document_id} ({total_chunks} chunks)..."
+        )
 
         batch_size = settings.embedding_batch_size
         model_name = settings.embedding_model
@@ -129,6 +143,10 @@ class EmbeddingService:
                     else:
                         progress_callback(processed, total_chunks)
                 except Exception as e:
-                    logger.warning(f"Failed to execute embedding progress callback: {e}")
+                    logger.warning(
+                        f"Failed to execute embedding progress callback: {e}"
+                    )
 
-        logger.info(f"Finished generating embeddings for document {document_id} successfully.")
+        logger.info(
+            f"Finished generating embeddings for document {document_id} successfully."
+        )

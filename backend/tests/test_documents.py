@@ -26,6 +26,7 @@ from tests.conftest import VALID_USER
 # Helper Functions
 # =============================================================================
 
+
 async def _register_and_login(client: AsyncClient, email: str) -> str:
     """Register and log in a new user, returning their access token."""
     user_payload = {
@@ -44,6 +45,7 @@ async def _register_and_login(client: AsyncClient, email: str) -> str:
 # =============================================================================
 # Integration Tests
 # =============================================================================
+
 
 class TestDocumentIngestion:
     """Test suite verifying document upload, validation, and CRUD operations."""
@@ -65,7 +67,12 @@ class TestDocumentIngestion:
         data = response.json()
         assert data["original_filename"] == "test.txt"
         assert data["mime_type"] == "text/plain"
-        assert data["processing_status"] in ("QUEUED", "PROCESSING", "PROCESSED", "FAILED")  # Phase 5: task runs eagerly, reaches PROCESSED
+        assert data["processing_status"] in (
+            "QUEUED",
+            "PROCESSING",
+            "PROCESSED",
+            "FAILED",
+        )  # Phase 5: task runs eagerly, reaches PROCESSED
         assert "id" in data
 
         # 2. PDF File
@@ -142,7 +149,10 @@ class TestDocumentIngestion:
             files={"file": ("report.pdf", fake_pdf, "text/plain")},
         )
         assert response.status_code == 400
-        assert "does not match its MIME content type" in response.json()["error"]["message"]
+        assert (
+            "does not match its MIME content type"
+            in response.json()["error"]["message"]
+        )
 
     @pytest.mark.anyio
     async def test_upload_exceeds_size_limit(self, client: AsyncClient) -> None:
@@ -287,16 +297,20 @@ class TestDocumentIngestion:
         resp_upload = await client.post(
             "/api/v1/documents/upload",
             headers=headers,
-            files={"file": ("temp.txt", io.BytesIO(b"Disposable file contents"), "text/plain")},
+            files={
+                "file": (
+                    "temp.txt",
+                    io.BytesIO(b"Disposable file contents"),
+                    "text/plain",
+                )
+            },
         )
         assert resp_upload.status_code == 201
         doc_id_str = resp_upload.json()["id"]
         doc_id = uuid.UUID(doc_id_str)
 
         # Query database to extract physical path
-        result = await db_session.execute(
-            select(Document).where(Document.id == doc_id)
-        )
+        result = await db_session.execute(select(Document).where(Document.id == doc_id))
         doc = result.scalar_one_or_none()
         assert doc is not None
         file_path = doc.storage_path
@@ -310,4 +324,6 @@ class TestDocumentIngestion:
         assert resp_del.status_code == 204
 
         # Assert physical file no longer exists
-        assert not os.path.exists(file_path), "Physical document file was not deleted from storage directory!"
+        assert not os.path.exists(
+            file_path
+        ), "Physical document file was not deleted from storage directory!"

@@ -128,7 +128,119 @@ flowchart TD
 
 ---
 
-## 8. Future AI Agent Architecture (Phase 4+)
+## 8. Semantic Retrieval Engine (Phase 8)
+
+The Retrieval Engine processes queries, generates embeddings, queries the vector database, filters metadata, and ranks results.
+
+```mermaid
+flowchart TD
+    subgraph Retrieval Pipeline
+        Query[User Input Query] --> EmbedService[EmbeddingService / embed_batch]
+        EmbedService --> QueryVector[Query Vector 768d]
+        QueryVector --> PGVector[PostgreSQL Cosine Similarity <=> Index Scan]
+        QueryVector --> SQLiteFallback[SQLite Fallback / NumPy Cosine Sim]
+        Query --> KeywordSearch[FTS Keyword Search / ILIKE matches]
+        PGVector --> SemanticCandidates[Semantic Chunks List]
+        SQLiteFallback --> SemanticCandidates
+        KeywordSearch --> KeywordCandidates[Keyword Chunks List]
+        SemanticCandidates & KeywordCandidates --> RRFFusion[Reciprocal Rank Fusion RRF]
+        RRFFusion --> Dedup[Duplicate Removal by chunk.id]
+        Dedup --> Paginate[Offset Pagination Slice]
+        Paginate --> ScaleScore[Score Normalization to 0-1]
+        ScaleScore --> Results[Sorted SearchResultItems]
+    end
+```
+
+### Key Components
+
+- **Cosine Similarity Search**: PostgreSQL `pgvector` calculates distance using `<=>` operator (cosine distance). The similarity score is calculated as `1.0 - distance`.
+- **HNSW Indexing**: Optimizes pgvector searches with Hierarchical Navigable Small World graphs using the `vector_cosine_ops` operator class, providing sub-millisecond query execution.
+- **Reciprocal Rank Fusion (RRF)**: Merges semantic results and keyword results by score rankings using:
+  $$RRF(d) = \sum_{m \in M} \frac{1}{k + r_m(d)}$$
+  where $k = 60$ and $r_m(d)$ is the rank of document $d$ in system $m$.
+- **Score Normalization**: Scales cosine similarities from range `[-1.0, 1.0]` to `[0.0, 1.0]` using `(score + 1.0) / 2.0`, providing a clean threshold pruning range for users.
+- **Offset Pagination**: Optimized database scan using `.offset(offset).limit(top_k)` on PostgreSQL, and in-memory slicing on combined hybrid results.
+- **Batch Retrieval**: Evaluates a list of input queries concurrently or sequentially to support advanced multi-hop queries.
+
+### Performance Considerations
+- **Index Scans**: Native HNSW indices in PostgreSQL ensure that search query scaling is $O(\log N)$ rather than $O(N)$ sequential table scans.
+- **Deduplication**: Filters duplicate chunks at retrieval time, optimizing network overhead and context window limits.
+
+---
+
+---
+
+## 9. Enterprise Retrieval-Augmented Generation Pipeline (Phase 9)
+
+The RAG Pipeline aggregates semantic retrieval, custom reranking, token context assembly, and LLM text generation to deliver fully grounded answers with citations.
+
+### Request Flow & Sequence
+
+```mermaid
+sequenceDiagram
+    participant Client as Next.js Client
+    participant API as POST /api/v1/rag/query
+    participant RAG as RAGService
+    participant ST as SentenceTransformers
+    participant DB as PGVector DB
+    participant LLM as LLMProvider (Gemini/OpenAI/Ollama)
+    participant Log as RagQuery (DB)
+
+    Client->>API: Send question + configurations
+    API->>RAG: execute_rag(question)
+    RAG->>ST: embed_batch(question)
+    ST-->>RAG: Query vector (768d)
+    RAG->>DB: Execute hybrid index scan (pgvector)
+    DB-->>RAG: Matching text chunks
+    RAG->>RAG: Freshness & Priority Reranking
+    RAG->>RAG: Context Token Budgeting (Tiktoken)
+    RAG->>LLM: POST generateContent / chat/completions
+    LLM-->>RAG: Answer with citations [1], [2]
+    RAG->>RAG: Regex extract & map citations
+    RAG->>Log: Insert query log entry
+    Log-->>RAG: Log committed
+    RAG-->>API: Return grounded response payload
+    API-->>Client: Display answer + cited chunks
+```
+
+### Provider Abstraction Interface
+
+The system decouples the LLM provider from the service execution layers via an abstract base class `LLMProvider`. Concrete providers utilize direct HTTP calls to avoid heavy library dependency chains:
+- **Google Gemini**: Hits `/models/gemini-1.5-flash:generateContent` using structured systemInstruction.
+- **OpenAI**: Hits chat completions `/v1/chat/completions` using system role messages.
+- **Local/Ollama**: Hits local endpoint `/chat/completions` via local model hosts.
+
+### Prompt Engineering Strategy
+
+Prompt templates enforce grounding and citation mapping:
+1. **Context Passages Formatting**: Context chunks are appended with unique numeric indices:
+   `--- Chunk [1] --- Document: proposal.pdf Page: 3 Content: ...`
+2. **System Prompt Directives**: Instructs the model:
+   - Answer **ONLY** using the supplied context passages.
+   - If information is missing, clearly state that. Do not hallucinate or guess.
+   - Append citation brackets `[index]` (e.g. `[1]`) at the end of sentences that use facts from that chunk.
+
+### Citation Pipeline
+
+1. **Generation**: The LLM outputs citation tags like `[1]` in its response.
+2. **Extraction**: The RAG service executes a regular expression `\[(\d+)\]` on the response text.
+3. **Lookup**: Parsed indices are mapped back to the active chunks list to extract document title, page number, section title, and raw text segment.
+4. **Tooltips/Highlights**: The Next.js client renders citation tags as interactive UI badges. Clicking a badge highlights and scrolls to the source document chunk reference.
+
+### Deployment & Environment Requirements
+
+Configure the following variables in the deployment environment:
+- `LLM_PROVIDER`: `gemini` (default), `openai`, or `ollama`.
+- `GEMINI_API_KEY`: API Key for Google Gemini API.
+- `OPENAI_API_KEY`: API Key for OpenAI completions.
+- `RAG_TOP_K`: Number of context chunks to pull (default: `5`).
+- `RAG_MAX_CONTEXT_TOKENS`: Tiktoken count limit (default: `4000`).
+- `RAG_TEMPERATURE`: LLM generation randomness (default: `0.2`).
+- `RAG_MAX_OUTPUT_TOKENS`: Max generated tokens (default: `1000`).
+
+---
+
+## 10. Future AI Agent Architecture (Phase 10)
 
 For complex searches, the system will leverage a tool-calling AI agent loop:
 
@@ -146,7 +258,7 @@ stateDiagram-v2
 
 ---
 
-## 9. Deployment Architecture
+## 11. Deployment Architecture
 
 For scaling, Nginx load balances traffic across multiple stateless Docker backend nodes:
 

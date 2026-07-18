@@ -101,14 +101,18 @@ class TestEmbeddingService:
 
         # Run embedding service
         service = EmbeddingService()
-        with patch.object(service, "embed_batch", return_value=[mock_vector, mock_vector]) as mock_embed:
+        with patch.object(
+            service, "embed_batch", return_value=[mock_vector, mock_vector]
+        ) as mock_embed:
             await service.embed_document_chunks(db_session, doc_id)
             mock_embed.assert_called_once()
 
         # Reset session and query updated chunks
         await db_session.close()
         result = await db_session.execute(
-            select(Chunk).where(Chunk.document_id == doc_id).order_by(Chunk.chunk_index.asc())
+            select(Chunk)
+            .where(Chunk.document_id == doc_id)
+            .order_by(Chunk.chunk_index.asc())
         )
         updated_chunks = result.scalars().all()
 
@@ -153,18 +157,25 @@ class TestEmbeddingCeleryIntegration:
         await db_session.commit()
 
         # Mock the embedding batch service method to return mock vectors
-        with patch("app.services.embedding_service.EmbeddingService.embed_batch", return_value=[mock_vector, mock_vector]):
+        with patch(
+            "app.services.embedding_service.EmbeddingService.embed_batch",
+            return_value=[mock_vector, mock_vector],
+        ):
             task_res = process_document(str(doc_id))
             assert task_res["status"] == "success"
 
         # Verify final document status transitioned to COMPLETED
         await db_session.close()
-        result_doc = await db_session.execute(select(Document).where(Document.id == doc_id))
+        result_doc = await db_session.execute(
+            select(Document).where(Document.id == doc_id)
+        )
         doc_updated = result_doc.scalar_one()
         assert doc_updated.processing_status == "COMPLETED"
 
         # Verify child chunks are embedded
-        result_chunks = await db_session.execute(select(Chunk).where(Chunk.document_id == doc_id))
+        result_chunks = await db_session.execute(
+            select(Chunk).where(Chunk.document_id == doc_id)
+        )
         db_chunks = result_chunks.scalars().all()
         assert len(db_chunks) > 0
         for chunk in db_chunks:
@@ -191,7 +202,9 @@ class TestEmbeddingAPI:
         headers = {"Authorization": f"Bearer {token}"}
 
         # 2. Setup user and document
-        result_user = await db_session.execute(select(User).where(User.email == "embedtest@example.com"))
+        result_user = await db_session.execute(
+            select(User).where(User.email == "embedtest@example.com")
+        )
         user = result_user.scalar_one()
 
         doc_id = uuid.uuid4()
@@ -228,7 +241,9 @@ class TestEmbeddingAPI:
         await db_session.commit()
 
         # 3. Test GET /documents/{id}/embedding-status
-        resp_status = await client.get(f"/api/v1/documents/{doc_id}/embedding-status", headers=headers)
+        resp_status = await client.get(
+            f"/api/v1/documents/{doc_id}/embedding-status", headers=headers
+        )
         assert resp_status.status_code == 200, resp_status.text
         status_data = resp_status.json()
         assert status_data["document_id"] == str(doc_id)
@@ -238,7 +253,9 @@ class TestEmbeddingAPI:
         assert status_data["remaining_chunks"] == 0
 
         # 4. Test GET /documents/{id}/embedding-summary
-        resp_summary = await client.get(f"/api/v1/documents/{doc_id}/embedding-summary", headers=headers)
+        resp_summary = await client.get(
+            f"/api/v1/documents/{doc_id}/embedding-summary", headers=headers
+        )
         assert resp_summary.status_code == 200, resp_summary.text
         summary_data = resp_summary.json()
         assert summary_data["document_id"] == str(doc_id)
@@ -246,7 +263,9 @@ class TestEmbeddingAPI:
         assert summary_data["model_used"] == "BAAI/bge-base-en-v1.5"
 
         # 5. Test GET /chunks/{id}/embedding
-        resp_chunk_emb = await client.get(f"/api/v1/chunks/{chunk_id}/embedding", headers=headers)
+        resp_chunk_emb = await client.get(
+            f"/api/v1/chunks/{chunk_id}/embedding", headers=headers
+        )
         assert resp_chunk_emb.status_code == 200, resp_chunk_emb.text
         emb_data = resp_chunk_emb.json()
         assert emb_data["id"] == str(chunk_id)
@@ -254,6 +273,8 @@ class TestEmbeddingAPI:
 
         # 6. Test POST /documents/{id}/embed (force generation trigger)
         with patch("app.tasks.document_tasks.embed_document.delay") as mock_delay:
-            resp_trigger = await client.post(f"/api/v1/documents/{doc_id}/embed", headers=headers)
+            resp_trigger = await client.post(
+                f"/api/v1/documents/{doc_id}/embed", headers=headers
+            )
             assert resp_trigger.status_code == 202
             mock_delay.assert_called_once_with(str(doc_id))
