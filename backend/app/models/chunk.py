@@ -8,10 +8,22 @@ Table: chunks
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Float, ForeignKey, Integer, String, Text, Uuid
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -145,6 +157,43 @@ class Chunk(TimestampMixin, Base):
         nullable=False,
         default="1.0.0",
         comment="Chunking pipeline schema version.",
+    )
+
+    # ── Phase 7: Vector Embeddings ────────────────────────────────────────────
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(768),
+        nullable=True,
+        comment="Vector embedding of the chunk text.",
+    )
+    embedding_model: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Name of the embedding model used.",
+    )
+    embedding_version: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Version of the embedding pipeline.",
+    )
+    embedded_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp when the embedding was generated.",
+    )
+    embedding_duration_ms: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Duration of embedding generation in milliseconds.",
+    )
+
+    # ── Table Arguments (Indices) ─────────────────────────────────────────────
+    __table_args__ = (
+        Index(
+            "ix_chunks_embedding",
+            embedding,
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
 
     # ── Relationships ─────────────────────────────────────────────────────────

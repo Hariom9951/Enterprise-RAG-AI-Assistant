@@ -147,7 +147,7 @@ class TestChunkingIntegration:
         await db_session.close()  # Reset cache
         result_doc = await db_session.execute(select(Document).where(Document.id == doc_id))
         doc_updated = result_doc.scalar_one()
-        assert doc_updated.processing_status == "PROCESSED"
+        assert doc_updated.processing_status == "COMPLETED"
 
         # 5. Verify Chunks were created in database
         result_chunks = await db_session.execute(select(Chunk).where(Chunk.document_id == doc_id))

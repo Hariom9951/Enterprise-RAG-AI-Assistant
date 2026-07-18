@@ -16,15 +16,22 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config.settings import settings
 from app.db.session import get_db
 from app.dependencies import get_current_active_user
 from app.models.chunk import Chunk
 from app.models.processed_document import ProcessedDocument
 from app.models.user import User
-from app.schemas.chunk import ChunkResponse, ChunkSummaryResponse
+from app.schemas.chunk import (
+    ChunkResponse,
+    ChunkSummaryResponse,
+    DocumentEmbeddingStatusResponse,
+    DocumentEmbeddingSummaryResponse,
+)
 from app.schemas.document import DocumentResponse, DocumentUpdate
 from app.schemas.processed_document import ProcessedDocumentResponse
 from app.services import document_service
+from app.tasks.document_tasks import embed_document
 
 router = APIRouter()
 
@@ -259,4 +266,144 @@ async def get_document_chunk_summary(
         max_chunk_size=max(token_counts),
         reading_time_estimate=sum(c.reading_time_estimate for c in chunks),
         languages=languages,
+    )
+
+
+@router.post(
+    "/{document_id}/embed",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Generate vector embeddings.",
+    description="Force triggers / reruns the vector embedding generation pipeline for all chunks of this document.",
+)
+async def generate_document_embeddings(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> dict[str, Any]:
+    # Check ownership
+    await document_service.get_document_by_id(db, document_id, current_user.id)
+
+    # Trigger task in background
+    embed_document.delay(str(document_id))
+
+    return {"message": "Embedding generation task scheduled successfully."}
+
+
+@router.get(
+    "/{document_id}/embedding-status",
+    response_model=DocumentEmbeddingStatusResponse,
+    summary="Get document embedding progress status.",
+    description="Retrieve generation status, completion percentage, and processed vs remaining chunk counts.",
+)
+async def get_document_embedding_status(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> DocumentEmbeddingStatusResponse:
+    # Check ownership
+    doc = await document_service.get_document_by_id(db, document_id, current_user.id)
+
+    # Count total chunks
+    from sqlalchemy import func
+    total_query = select(func.count(Chunk.id)).where(Chunk.document_id == document_id)
+    total_res = await db.execute(total_query)
+    total_chunks = total_res.scalar() or 0
+
+    # Count embedded chunks
+    embedded_query = select(func.count(Chunk.id)).where(
+        Chunk.document_id == document_id, Chunk.embedding.is_not(None)
+    )
+    embedded_res = await db.execute(embedded_query)
+    processed_chunks = embedded_res.scalar() or 0
+
+    remaining_chunks = max(0, total_chunks - processed_chunks)
+    percentage = (processed_chunks / total_chunks) * 100 if total_chunks > 0 else 0.0
+
+    # Determine status
+    status_str = "QUEUED"
+    if doc.processing_status == "FAILED":
+        status_str = "FAILED"
+    elif processed_chunks == total_chunks and total_chunks > 0:
+        status_str = "COMPLETED"
+    elif processed_chunks > 0:
+        status_str = "PROCESSING"
+
+    # Get model used
+    model_used = settings.embedding_model
+    if processed_chunks > 0:
+        model_query = select(Chunk.embedding_model).where(
+            Chunk.document_id == document_id, Chunk.embedding_model.is_not(None)
+        ).limit(1)
+        model_res = await db.execute(model_query)
+        model_used = model_res.scalar() or settings.embedding_model
+
+    # Cumulative duration
+    duration_query = select(func.sum(Chunk.embedding_duration_ms)).where(
+        Chunk.document_id == document_id
+    )
+    duration_res = await db.execute(duration_query)
+    processing_time_ms = int(duration_res.scalar() or 0)
+
+    return DocumentEmbeddingStatusResponse(
+        document_id=document_id,
+        status=status_str,
+        percentage_complete=percentage,
+        processed_chunks=processed_chunks,
+        remaining_chunks=remaining_chunks,
+        model_used=model_used,
+        vector_dimension=settings.vector_dimension,
+        processing_time_ms=processing_time_ms,
+        error_message=None if status_str != "FAILED" else "Document processing task failed.",
+    )
+
+
+@router.get(
+    "/{document_id}/embedding-summary",
+    response_model=DocumentEmbeddingSummaryResponse,
+    summary="Get document embedding summary.",
+    description="Retrieve statistical aggregation of vector properties and duration.",
+)
+async def get_document_embedding_summary(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> DocumentEmbeddingSummaryResponse:
+    # Check ownership
+    await document_service.get_document_by_id(db, document_id, current_user.id)
+
+    # Sum stats
+    from sqlalchemy import func
+    stats_query = select(
+        func.count(Chunk.id),
+        func.sum(Chunk.embedding_duration_ms),
+    ).where(Chunk.document_id == document_id, Chunk.embedding.is_not(None))
+    stats_res = await db.execute(stats_query)
+    stats_row = stats_res.first()
+
+    total_embedded = 0
+    total_duration_ms = 0
+    if stats_row:
+        total_embedded = stats_row[0] or 0
+        total_duration_ms = int(stats_row[1] or 0)
+
+    # Get model used and pipeline version
+    model_used = settings.embedding_model
+    version = "1.0.0"
+    if total_embedded > 0:
+        meta_query = select(Chunk.embedding_model, Chunk.embedding_version).where(
+            Chunk.document_id == document_id, Chunk.embedding.is_not(None)
+        ).limit(1)
+        meta_res = await db.execute(meta_query)
+        meta_row = meta_res.first()
+        if meta_row:
+            model_used = meta_row[0] or settings.embedding_model
+            version = meta_row[1] or "1.0.0"
+
+    return DocumentEmbeddingSummaryResponse(
+        document_id=document_id,
+        total_embedded=total_embedded,
+        vector_dimension=settings.vector_dimension,
+        model_used=model_used,
+        version=version,
+        total_duration_ms=total_duration_ms,
     )

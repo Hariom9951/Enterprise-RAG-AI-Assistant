@@ -70,7 +70,7 @@ async def test_process_document_task_success(db_session: AsyncSession):
     await db_session.close()  # Reset cache
     result_db = await db_session.execute(select(Document).where(Document.id == doc_id))
     doc_updated = result_db.scalar_one()
-    assert doc_updated.processing_status == "PROCESSED"
+    assert doc_updated.processing_status == "COMPLETED"
 
     # Verify ProcessedDocument record was created
     pd_result = await db_session.execute(

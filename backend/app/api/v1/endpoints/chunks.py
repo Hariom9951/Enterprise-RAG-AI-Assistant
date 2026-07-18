@@ -16,7 +16,7 @@ from app.db.session import get_db
 from app.dependencies import get_current_active_user
 from app.models.chunk import Chunk
 from app.models.user import User
-from app.schemas.chunk import ChunkResponse
+from app.schemas.chunk import ChunkEmbeddingResponse, ChunkResponse
 from app.services import document_service
 
 router = APIRouter()
@@ -75,3 +75,29 @@ async def delete_chunk(
     # 3. Delete chunk record
     await db.delete(chunk)
     await db.commit()
+
+
+@router.get(
+    "/{chunk_id}/embedding",
+    response_model=ChunkEmbeddingResponse,
+    summary="Retrieve raw chunk embedding.",
+    description="Fetch the raw float vector array elements of a single chunk.",
+)
+async def get_chunk_embedding(
+    chunk_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ChunkEmbeddingResponse:
+    # 1. Fetch chunk record
+    result = await db.execute(select(Chunk).where(Chunk.id == chunk_id))
+    chunk = result.scalar_one_or_none()
+    if chunk is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chunk not found.",
+        )
+
+    # 2. Verify ownership of the parent document
+    await document_service.get_document_by_id(db, chunk.document_id, current_user.id)
+
+    return ChunkEmbeddingResponse.model_validate(chunk)

@@ -87,6 +87,33 @@ export interface ChunkSummaryResponse {
   languages: string[];
 }
 
+export interface ChunkEmbeddingResponse {
+  id: string;
+  embedding: number[] | null;
+}
+
+export interface DocumentEmbeddingStatusResponse {
+  document_id: string;
+  status: string;
+  percentage_complete: number;
+  processed_chunks: number;
+  remaining_chunks: number;
+  model_used: string;
+  vector_dimension: number;
+  processing_time_ms: number;
+  error_message: string | null;
+}
+
+export interface DocumentEmbeddingSummaryResponse {
+  document_id: string;
+  total_embedded: number;
+  vector_dimension: number;
+  model_used: string;
+  version: string;
+  total_duration_ms: number;
+}
+
+
 
 export interface ApiError {
   error: {
@@ -260,6 +287,20 @@ export const documentsApi = {
   /** Get summary of chunks for a document. */
   getChunkSummary: (id: string): Promise<ChunkSummaryResponse> =>
     request<ChunkSummaryResponse>(`/documents/${id}/chunk-summary`),
+
+  /** Trigger vector embedding generation in the background. */
+  embed: (id: string): Promise<{ message: string }> =>
+    request<{ message: string }>(`/documents/${id}/embed`, {
+      method: "POST",
+    }),
+
+  /** Get background embedding progress status. */
+  getEmbeddingStatus: (id: string): Promise<DocumentEmbeddingStatusResponse> =>
+    request<DocumentEmbeddingStatusResponse>(`/documents/${id}/embedding-status`),
+
+  /** Get database embedding statistical summary. */
+  getEmbeddingSummary: (id: string): Promise<DocumentEmbeddingSummaryResponse> =>
+    request<DocumentEmbeddingSummaryResponse>(`/documents/${id}/embedding-summary`),
 };
 
 // =============================================================================
@@ -276,5 +317,9 @@ export const chunksApi = {
     request<void>(`/chunks/${id}`, {
       method: "DELETE",
     }),
+
+  /** Retrieve raw float vector array elements of a chunk. */
+  getEmbedding: (id: string): Promise<ChunkEmbeddingResponse> =>
+    request<ChunkEmbeddingResponse>(`/chunks/${id}/embedding`),
 };
 

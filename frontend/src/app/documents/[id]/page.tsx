@@ -145,7 +145,16 @@ export default function DocumentDetailPage() {
                 Uploaded {new Date(doc?.created_at ?? "").toLocaleDateString()}
               </p>
             </div>
-            {doc && <StatusBadge status={doc.processing_status} />}
+            <div className="flex items-center gap-3 shrink-0">
+              {doc && <StatusBadge status={doc.processing_status} />}
+              <button
+                onClick={() => router.push(`/documents/${docId}/embed`)}
+                className="px-3.5 py-1.5 rounded-lg bg-indigo-950 text-indigo-400 hover:bg-indigo-900 border border-indigo-850/30 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                title="View database embedding generation and vector metrics"
+              >
+                ⚡ Pipeline Status
+              </button>
+            </div>
           </div>
 
           {doc && !isTerminal && (

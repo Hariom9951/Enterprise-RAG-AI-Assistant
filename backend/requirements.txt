@@ -82,3 +82,9 @@ langdetect==1.0.9                  # ISO 639-1 language code detection
 # -----------------------------------------------------------------------------
 tiktoken==0.8.0                    # Fast, reproducible tokenization
 
+# -----------------------------------------------------------------------------
+# Phase 7: Vector Embeddings & pgvector
+# -----------------------------------------------------------------------------
+sentence-transformers==3.0.1       # Sentence embeddings from Hugging Face
+pgvector==0.3.2                    # PostgreSQL pgvector integration for SQLAlchemy
+

@@ -99,7 +99,16 @@ async def _async_process_document(doc_id: uuid.UUID) -> dict[str, Any]:
         chunker = ChunkingService()
         await chunker.chunk_document(db, doc_id)
 
-    logger.info(f"Finished processing and chunking document {doc_id} successfully.")
+        # 6. Vector Embedding Generation
+        from app.services.embedding_service import EmbeddingService
+        embedder = EmbeddingService()
+        await embedder.embed_document_chunks(db, doc_id)
+
+        # Transition status to COMPLETED
+        doc.processing_status = "COMPLETED"
+        await db.commit()
+
+    logger.info(f"Finished processing and embedding document {doc_id} successfully.")
     return {"status": "success", "doc_id": str(doc_id)}
 
 
@@ -148,4 +157,52 @@ def process_document(self: Task, doc_id_str: str) -> dict[str, Any]:
         except Exception as retry_exc:
             # Mark document as FAILED only if all retry limits are fully exhausted
             run_async_in_thread(_async_handle_failure(doc_id))
+            raise retry_exc
+
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=5)
+def embed_document(self: Task, doc_id_str: str) -> dict[str, Any]:
+    """
+    Background worker job to generate/regenerate embeddings for chunks of a document.
+    """
+    logger.info(f"Celery worker received embedding generation job: {doc_id_str}")
+    doc_id = uuid.UUID(doc_id_str)
+
+    async def progress_callback(processed: int, total: int) -> None:
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "current": processed,
+                "total": total,
+                "percentage": (processed / total) * 100 if total > 0 else 100,
+            },
+        )
+
+    async def _async_embed() -> None:
+        async with get_async_session() as db:
+            db = getattr(db, "_session", db)
+
+            # Fetch document
+            result = await db.execute(select(Document).where(Document.id == doc_id))
+            doc = result.scalar_one_or_none()
+            if not doc:
+                raise ValueError(f"Document {doc_id} not found.")
+
+            from app.services.embedding_service import EmbeddingService
+            embedder = EmbeddingService()
+            await embedder.embed_document_chunks(db, doc_id, progress_callback=progress_callback)
+
+    try:
+        run_async_in_thread(_async_embed())
+        return {"status": "success", "doc_id": str(doc_id)}
+    except Exception as exc:
+        logger.error(f"Error embedding document {doc_id_str}: {exc}")
+        from celery.exceptions import Retry
+        try:
+            self.retry(exc=exc)
+            raise exc
+        except Retry as retry_exc:
+            raise retry_exc
+        except Exception as retry_exc:
+            # We don't mark document status as FAILED for manual reruns, but we log the retry exhaust
             raise retry_exc
