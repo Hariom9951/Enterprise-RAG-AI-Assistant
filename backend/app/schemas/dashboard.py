@@ -8,49 +8,46 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RecentUploadItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     original_filename: str
     file_size: int
     processing_status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class RecentConversationItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     title: str
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class RecentSearchItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     query_text: str
     search_type: str
     total_results: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class RecentAgentRunItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     question: str
     success: bool
     total_latency_ms: int
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class DashboardStatisticsResponse(BaseModel):

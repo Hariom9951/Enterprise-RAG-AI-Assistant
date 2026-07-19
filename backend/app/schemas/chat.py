@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatSessionCreate(BaseModel):
@@ -32,17 +32,18 @@ class ChatSessionRenameRequest(BaseModel):
 class ChatSessionResponse(BaseModel):
     """Simplified display properties of a conversation session."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     title: str
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ChatMessageResponse(BaseModel):
     """Properties of an individual user/assistant conversational exchange."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     role: str
@@ -52,21 +53,17 @@ class ChatMessageResponse(BaseModel):
     latency: dict[str, int] | None = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ChatSessionDetailResponse(BaseModel):
     """Complete properties of a conversation session including message threads."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     title: str
     created_at: datetime
     updated_at: datetime
     messages: list[ChatMessageResponse]
-
-    class Config:
-        from_attributes = True
 
 
 class ChatMessageRequest(BaseModel):

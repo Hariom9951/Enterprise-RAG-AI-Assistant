@@ -55,7 +55,7 @@ async def get_dashboard_statistics(
     total_embeddings = await db.scalar(
         select(func.count(Chunk.id))
         .join(Document, Chunk.document_id == Document.id)
-        .where(and_(Document.user_id == user_id, Chunk.embedding != None))
+        .where(and_(Document.user_id == user_id, Chunk.embedding != None))  # noqa: E711
     ) or 0
 
     # 3. Total Chat Sessions

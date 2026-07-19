@@ -110,9 +110,10 @@ class TestLLMProviders:
     @pytest.mark.asyncio
     async def test_provider_missing_keys(self) -> None:
         """Ensure provider initialization raises errors if credentials are missing."""
-        gemini = GeminiProvider(api_key=None)
-        with pytest.raises(LLMProviderError):
-            await gemini.generate_response("sys", "usr")
+        with patch("app.services.llm_providers.settings.gemini_api_key", None):
+            gemini = GeminiProvider(api_key=None)
+            with pytest.raises(LLMProviderError):
+                await gemini.generate_response("sys", "usr")
 
 
 class TestRAGService:
