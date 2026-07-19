@@ -21,5 +21,5 @@ class UserRole(str, enum.Enum):
         ADMIN — Full administrative access. Can manage users and system config.
     """
 
-    USER = "user"
-    ADMIN = "admin"
+    USER = "USER"
+    ADMIN = "ADMIN"

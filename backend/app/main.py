@@ -59,6 +59,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         extra={"environment": settings.environment, "debug": settings.debug},
     )
 
+    if settings.gemini_api_key:
+        logger.info("[CONFIG] Google Gemini API Key is configured and detected.")
+    else:
+        logger.warning("[CONFIG] Google Gemini API Key is NOT configured.")
+
     # Phase 2: Verify database connectivity.
     await verify_database_connection()
 
@@ -117,8 +122,8 @@ def create_app() -> FastAPI:
         openapi_tags=TAGS_METADATA,
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
-        # Disable docs in production for security — controlled via settings.
-        openapi_url="/openapi.json" if not settings.is_production else None,
+        # Control openapi schema visibility based on docs path presence
+        openapi_url="/openapi.json" if (settings.docs_url or settings.redoc_url) else None,
         lifespan=lifespan,
     )
 

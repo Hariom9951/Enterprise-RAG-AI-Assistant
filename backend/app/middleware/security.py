@@ -45,9 +45,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Basic Content Security Policy (CSP)
         csp_policy = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
+            "script-src 'self' cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; "
+            "img-src 'self' data: fastapi.tiangolo.com; "
             "connect-src 'self' *; "
             "frame-ancestors 'none'; "
             "object-src 'none'"

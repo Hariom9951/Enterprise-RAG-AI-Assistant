@@ -165,7 +165,7 @@ class UserResponse(_BaseSchema):
     id: uuid.UUID = Field(..., description="Unique user identifier.")
     full_name: str = Field(..., description="User's display name.")
     email: str = Field(..., description="User's email address.")
-    role: UserRole = Field(..., description="RBAC role: 'user' or 'admin'.")
+    role: UserRole = Field(..., description="RBAC role: 'USER' or 'ADMIN'.")
     is_active: bool = Field(..., description="Whether the account is currently active.")
     is_verified: bool = Field(..., description="Whether the email has been verified.")
     created_at: datetime = Field(..., description="Account creation timestamp (UTC).")

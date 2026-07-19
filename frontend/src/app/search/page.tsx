@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { searchApi, documentsApi, DocumentResponse, SearchResultItem, SearchQueryResponse, SearchStatisticsResponse } from "@/lib/api";
 import { Loader2, Search, Sliders, History, BarChart3, AlertCircle, ArrowRight, ExternalLink } from "lucide-react";
+import Navigation from "@/components/Navigation";
 
 export default function SemanticSearchPage() {
   const router = useRouter();
@@ -193,31 +194,11 @@ export default function SemanticSearchPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="relative min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500/30 selection:text-indigo-200 pl-0 md:pl-64">
+      <Navigation />
       {/* Background radial effects */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-20 pointer-events-none" />
       <div className="absolute top-0 left-1/4 w-[400px] h-[400px] bg-indigo-500/5 blur-[120px] rounded-full pointer-events-none" />
-      
-      {/* Sticky Header Panel */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-900 bg-slate-950/80 backdrop-blur-md px-6 py-4">
-        <div className="mx-auto max-w-7xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="p-2 rounded-lg bg-indigo-950 text-indigo-400 border border-indigo-900/40 shrink-0">
-              <Search className="h-5 w-5" />
-            </span>
-            <div>
-              <h1 className="text-lg font-bold text-white">Semantic Knowledge Retrieval</h1>
-              <p className="text-xs text-slate-400">Query multi-dimensional database embeddings using cosine vector matching</p>
-            </div>
-          </div>
-          <button
-            onClick={() => router.push("/documents")}
-            className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold transition-colors"
-          >
-            Back to Documents
-          </button>
-        </div>
-      </header>
 
       {/* Main Console Layout */}
       <main className="mx-auto max-w-7xl px-6 py-8 grid grid-cols-1 lg:grid-cols-4 gap-8 relative z-10">

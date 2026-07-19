@@ -111,6 +111,10 @@ async def agent_chat(
         model_name=result.model_name,
         success=result.success,
         error_message=result.error_message,
+        citations=result.citations,
+        confidence_score=result.confidence_score,
+        reasoning_summary=result.reasoning_summary,
+        retrieved_documents=result.retrieved_documents,
     )
 
 

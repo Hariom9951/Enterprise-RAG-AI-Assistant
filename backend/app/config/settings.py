@@ -232,6 +232,10 @@ class Settings(BaseSettings):
         default=None,
         description="API Key for Google Gemini services.",
     )
+    gemini_model: str = Field(
+        default="gemini-3.5-flash",
+        description="The Google Gemini model name to use.",
+    )
     openai_api_key: str | None = Field(
         default=None,
         description="API Key for OpenAI services.",

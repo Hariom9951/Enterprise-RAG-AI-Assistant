@@ -19,6 +19,7 @@ import {
   type AgentStatisticsResponse,
   type AgentToolCallResponse,
 } from "@/lib/agentApi";
+import Navigation from "@/components/Navigation";
 
 // =============================================================================
 // Types
@@ -209,14 +210,15 @@ export default function AgentDashboardClient() {
 
   return (
     <div
+      className="pl-0 md:pl-64"
       style={{
         minHeight: "100vh",
         background: "linear-gradient(135deg, #0f0f1a 0%, #1a1b2e 50%, #12121f 100%)",
         fontFamily: "'Inter', -apple-system, sans-serif",
         color: "#e2e8f0",
-        padding: "0",
       }}
     >
+      <Navigation />
       {/* Header */}
       <div
         style={{

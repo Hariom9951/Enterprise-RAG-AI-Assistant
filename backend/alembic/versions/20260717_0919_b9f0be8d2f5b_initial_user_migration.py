@@ -27,7 +27,7 @@ def upgrade() -> None:
     sa.Column('full_name', sa.String(length=255), nullable=False, comment='Full display name of the user.'),
     sa.Column('email', sa.String(length=255), nullable=False, comment='Unique email address used as the login identifier.'),
     sa.Column('hashed_password', sa.String(length=255), nullable=False, comment="bcrypt-hashed representation of the user's password."),
-    sa.Column('role', sa.Enum('USER', 'ADMIN', name='userrole', create_constraint=True), server_default='user', nullable=False, comment="Role-based access control assignment: 'user' or 'admin'."),
+    sa.Column('role', sa.Enum('user', 'admin', name='userrole', create_constraint=True), server_default='user', nullable=False, comment="Role-based access control assignment: 'user' or 'admin'."),
     sa.Column('is_active', sa.Boolean(), server_default='1', nullable=False, comment='False indicates the account has been suspended.'),
     sa.Column('is_verified', sa.Boolean(), server_default='0', nullable=False, comment='True once the user has verified their email address.'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False, comment='UTC timestamp when this record was first created.'),

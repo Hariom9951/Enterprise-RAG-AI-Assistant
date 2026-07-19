@@ -11,7 +11,7 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; lab
   QUEUED:     { bg: "bg-blue-900",   text: "text-blue-300",   dot: "bg-blue-400",   label: "Queued"     },
   PROCESSING: { bg: "bg-yellow-900", text: "text-yellow-300", dot: "bg-yellow-400", label: "Processing" },
   PROCESSED:  { bg: "bg-green-900",  text: "text-green-300",  dot: "bg-green-400",  label: "Processed"  },
-  COMPLETED:  { bg: "bg-green-900",  text: "text-green-300",  dot: "bg-green-400",  label: "Completed"  },
+  COMPLETED:  { bg: "bg-green-900",  text: "text-green-300",  dot: "bg-green-400",  label: "Processed"  },
   FAILED:     { bg: "bg-red-900",    text: "text-red-300",    dot: "bg-red-400",    label: "Failed"     },
 };
 

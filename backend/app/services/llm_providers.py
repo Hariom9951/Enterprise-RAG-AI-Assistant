@@ -64,10 +64,10 @@ class GeminiProvider(LLMProvider):
     """
 
     def __init__(
-        self, api_key: str | None = None, model: str = "gemini-1.5-flash"
+        self, api_key: str | None = None, model: str | None = None
     ) -> None:
         self.api_key = api_key or settings.gemini_api_key
-        self.model = model
+        self.model = model or settings.gemini_model
 
     async def generate_response(
         self,
@@ -461,7 +461,7 @@ def get_llm_provider(
     p_name = (provider_name or settings.llm_provider).lower()
 
     if p_name == "gemini":
-        return GeminiProvider(api_key=api_key, model=model or "gemini-1.5-flash")
+        return GeminiProvider(api_key=api_key, model=model or settings.gemini_model)
     elif p_name == "openai":
         return OpenAIProvider(api_key=api_key, model=model or "gpt-4o-mini")
     elif p_name == "ollama":

@@ -26,6 +26,8 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import Navigation from "@/components/Navigation";
+import { renderMarkdown } from "@/lib/markdown";
 
 export default function RAGPlaygroundPage() {
   const router = useRouter();
@@ -36,7 +38,7 @@ export default function RAGPlaygroundPage() {
   const [threshold, setThreshold] = useState(0.0);
   const [useReranker, setUseReranker] = useState(true);
   const [provider, setProvider] = useState("gemini");
-  const [model, setModel] = useState("gemini-1.5-flash");
+  const [model, setModel] = useState("gemini-3.5-flash");
 
   // Filtering criteria
   const [allDocs, setAllDocs] = useState<DocumentResponse[]>([]);
@@ -187,31 +189,11 @@ export default function RAGPlaygroundPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="relative min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500/30 selection:text-indigo-200 pl-0 md:pl-64">
+      <Navigation />
       {/* Background radial glow */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-20 pointer-events-none" />
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-indigo-500/5 blur-[150px] rounded-full pointer-events-none" />
-
-      {/* Header navbar */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-900 bg-slate-950/80 backdrop-blur-md px-6 py-4">
-        <div className="mx-auto max-w-7xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="p-2 rounded-lg bg-indigo-950 text-indigo-400 border border-indigo-900/40 shrink-0">
-              <Sparkles className="h-5 w-5 animate-pulse" />
-            </span>
-            <div>
-              <h1 className="text-lg font-bold text-white">Enterprise RAG Playground</h1>
-              <p className="text-xs text-slate-400">Generate grounded, fully-cited answers indexed from local documents</p>
-            </div>
-          </div>
-          <button
-            onClick={() => router.push("/documents")}
-            className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold transition-colors"
-          >
-            Back to Documents
-          </button>
-        </div>
-      </header>
 
       {/* Main Grid console */}
       <main className="mx-auto max-w-7xl px-6 py-8 grid grid-cols-1 lg:grid-cols-4 gap-8 relative z-10">
@@ -282,7 +264,7 @@ export default function RAGPlaygroundPage() {
                     value={provider}
                     onChange={(e) => {
                       setProvider(e.target.value);
-                      setModel(e.target.value === "gemini" ? "gemini-1.5-flash" : e.target.value === "openai" ? "gpt-4o-mini" : "llama3");
+                      setModel(e.target.value === "gemini" ? "gemini-3.5-flash" : e.target.value === "openai" ? "gpt-4o-mini" : "llama3");
                     }}
                     className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-slate-200 outline-none cursor-pointer hover:border-slate-700 font-medium"
                   >
@@ -301,8 +283,8 @@ export default function RAGPlaygroundPage() {
                   >
                     {provider === "gemini" && (
                       <>
-                        <option value="gemini-1.5-flash">gemini-1.5-flash (default)</option>
-                        <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                        <option value="gemini-3.5-flash">gemini-3.5-flash (default)</option>
+                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                       </>
                     )}
                     {provider === "openai" && (
@@ -465,7 +447,7 @@ export default function RAGPlaygroundPage() {
                   </div>
 
                   <div className="prose prose-invert max-w-none">
-                    {renderFormattedAnswer(response.answer)}
+                    {renderMarkdown(response.answer, handleScrollToCitation)}
                   </div>
 
                   <div className="flex flex-wrap gap-4 pt-3 border-t border-slate-900/60 text-[10px] text-slate-400 font-mono">
@@ -533,6 +515,61 @@ export default function RAGPlaygroundPage() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* All Retrieved context chunks list */}
+                {response.retrieved_chunks && response.retrieved_chunks.length > 0 && (
+                  <section className="space-y-3.5 mt-6">
+                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">All Retrieved Context Chunks</h3>
+                    <div className="space-y-3">
+                      {response.retrieved_chunks.map((item, idx) => {
+                        const isCited = response.citations.some(c => c.chunk_id === item.chunk_id);
+                        return (
+                          <div
+                            key={item.chunk_id || idx}
+                            className={`bg-slate-900/20 border rounded-xl p-4 space-y-3 transition-all duration-300 ${
+                              isCited ? "border-indigo-500/40 bg-indigo-950/5 shadow-md shadow-indigo-500/2" : "border-slate-900"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-xs gap-4">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${
+                                  isCited ? "bg-indigo-950/60 border-indigo-800 text-indigo-400" : "bg-slate-900 border-slate-800 text-slate-500"
+                                }`}>
+                                  {isCited ? "Cited" : "Retrieved (Pruned)"}
+                                </span>
+                                <span className="text-slate-500 font-mono font-semibold">Similarity: {item.score.toFixed(4)}</span>
+                              </div>
+                              <button
+                                onClick={() => router.push(`/documents/${item.document_id}`)}
+                                className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1.5"
+                              >
+                                <span className="truncate max-w-[200px]" title={item.document_title}>
+                                  {item.document_title}
+                                </span>
+                                <ExternalLink className="h-3 w-3" />
+                              </button>
+                            </div>
+
+                            <p className="text-xs text-slate-400 leading-relaxed font-sans bg-slate-900/10 border border-slate-900/40 rounded-lg p-3">
+                              {item.text}
+                            </p>
+
+                            <div className="flex gap-2 text-[9px] text-slate-500 font-mono">
+                              <span className="px-2 py-0.5 bg-slate-900 border border-slate-800/80 rounded">
+                                Page {item.page_number}
+                              </span>
+                              {item.section_title && (
+                                <span className="px-2 py-0.5 bg-slate-900 border border-slate-800/80 rounded truncate max-w-[200px]">
+                                  Section: {item.section_title}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </section>
                 )}

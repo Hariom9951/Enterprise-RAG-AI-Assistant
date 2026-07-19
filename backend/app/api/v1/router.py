@@ -22,6 +22,7 @@ from app.api.v1.endpoints.rag import router as rag_router
 from app.api.v1.endpoints.root import router as root_router
 from app.api.v1.endpoints.search import router as search_router
 from app.api.v1.endpoints.users import router as users_router
+from app.api.v1.endpoints.dashboard import router as dashboard_router
 
 # The top-level v1 router — all routes registered here will be mounted
 # under the API_V1_PREFIX defined in settings (default: /api/v1).
@@ -54,3 +55,6 @@ api_v1_router.include_router(rag_router, prefix="/rag", tags=["rag"])
 
 # ── Phase 11: Enterprise AI Agents ───────────────────────────────────────────
 api_v1_router.include_router(agent_router, prefix="/agent", tags=["agent"])
+
+# ── Phase 12: Workspace Dashboard ────────────────────────────────────────────
+api_v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])

@@ -76,7 +76,7 @@ class User(TimestampMixin, Base):
         nullable=False,
         default=UserRole.USER,
         server_default=UserRole.USER.value,
-        comment="Role-based access control assignment: 'user' or 'admin'.",
+        comment="Role-based access control assignment: 'USER' or 'ADMIN'.",
     )
 
     # ── Account Status ────────────────────────────────────────────────────────

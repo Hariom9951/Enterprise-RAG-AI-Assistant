@@ -275,7 +275,7 @@ class ChatService:
         # 6. Stream LLM answer
         prov_name = provider_name or settings.llm_provider
         mod_name = model_name or (
-            "gemini-1.5-flash"
+            settings.gemini_model
             if prov_name == "gemini"
             else "gpt-4o-mini"
             if prov_name == "openai"

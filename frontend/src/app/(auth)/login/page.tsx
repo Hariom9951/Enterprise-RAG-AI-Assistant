@@ -41,7 +41,7 @@ export default function LoginPage() {
         password: formData.password,
       });
       setTokens(tokens.access_token, tokens.refresh_token);
-      router.push("/");
+      router.push("/dashboard");
     } catch (err: unknown) {
       const apiErr = err as ApiError;
       setError(

@@ -123,7 +123,7 @@ async def list_models(
     return [
         RAGModelItem(
             provider="GEMINI",
-            model_name="gemini-1.5-flash",
+            model_name=settings.gemini_model,
             is_default=(default_provider == "gemini"),
         ),
         RAGModelItem(

@@ -26,6 +26,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { documentsApi, DocumentResponse } from "@/lib/api";
+import Navigation from "@/components/Navigation";
 
 const PAGE_SIZE = 8;
 
@@ -231,9 +232,10 @@ export default function DocumentsPage() {
           </span>
         );
       case "COMPLETED":
+      case "PROCESSED":
         return (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-950/40 text-emerald-300 border border-emerald-800/40">
-            Completed
+            Processed
           </span>
         );
       case "FAILED":
@@ -252,33 +254,12 @@ export default function DocumentsPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="relative min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 pl-0 md:pl-64">
+      <Navigation />
       {/* Background Gradients */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
       <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute top-1/3 left-1/4 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
-
-      {/* Header Panel */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center space-x-2 text-xl font-bold tracking-tight text-white hover:text-indigo-400 transition-colors">
-            <span className="bg-gradient-to-r from-indigo-400 via-sky-400 to-emerald-400 bg-clip-text text-transparent">
-              Enterprise RAG
-            </span>
-          </Link>
-          <div className="flex items-center space-x-6">
-            <Link
-              href="/search"
-              className="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1.5"
-            >
-              🔍 Semantic Search
-            </Link>
-            <Link href="/" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">
-              Back to Home
-            </Link>
-          </div>
-        </div>
-      </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 relative z-10">
         {/* Banner Section */}

@@ -84,6 +84,8 @@ services:
       target: runtime
     container_name: rag_backend
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
       APP_NAME: "Enterprise RAG AI Assistant"
       APP_VERSION: "0.2.0"
@@ -95,8 +97,8 @@ services:
       WORKERS: "4"
 
       API_V1_PREFIX: /api/v1
-      DOCS_URL: ""
-      REDOC_URL: ""
+      DOCS_URL: "/docs"
+      REDOC_URL: "/redoc"
 
       ALLOWED_ORIGINS: "http://localhost:3000,http://frontend:3000,https://rag.mycompany.com"
       ALLOW_CREDENTIALS: "true"
@@ -138,6 +140,8 @@ services:
     container_name: rag_celery_worker
     restart: unless-stopped
     command: celery -A app.tasks.celery_app worker --loglevel=info
+    env_file:
+      - ./backend/.env
     environment:
       APP_NAME: "Enterprise RAG AI Assistant - Worker"
       ENVIRONMENT: production
@@ -173,6 +177,8 @@ services:
     healthcheck:
       disable: true
     command: celery -A app.tasks.celery_app beat --loglevel=info -s /tmp/celerybeat-schedule
+    env_file:
+      - ./backend/.env
     environment:
       APP_NAME: "Enterprise RAG AI Assistant - Beat"
       ENVIRONMENT: production

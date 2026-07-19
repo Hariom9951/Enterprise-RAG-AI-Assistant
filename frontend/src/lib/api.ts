@@ -24,7 +24,7 @@ export interface UserResponse {
   id: string;
   full_name: string;
   email: string;
-  role: "user" | "admin";
+  role: "USER" | "ADMIN";
   is_active: boolean;
   is_verified: boolean;
   created_at: string;
@@ -571,6 +571,62 @@ export const chatApi = {
       body: JSON.stringify(payload),
     });
   },
+};
+
+// =============================================================================
+// Dashboard API (Phase 12)
+// =============================================================================
+
+export interface RecentUploadItem {
+  id: string;
+  original_filename: string;
+  file_size: number;
+  processing_status: string;
+  created_at: string;
+}
+
+export interface RecentConversationItem {
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
+export interface RecentSearchItem {
+  id: string;
+  query_text: string;
+  search_type: string;
+  total_results: number;
+  created_at: string;
+}
+
+export interface RecentAgentRunItem {
+  id: string;
+  question: string;
+  success: boolean;
+  total_latency_ms: number;
+  created_at: string;
+}
+
+export interface DashboardData {
+  total_documents: number;
+  total_chunks: number;
+  total_embeddings: number;
+  total_conversations: number;
+  todays_queries: number;
+  average_latency_ms: number;
+  average_similarity: number;
+  most_used_llm: string;
+  storage_usage_bytes: number;
+  recent_uploads: RecentUploadItem[];
+  recent_conversations: RecentConversationItem[];
+  recent_searches: RecentSearchItem[];
+  recent_agent_runs: RecentAgentRunItem[];
+}
+
+export const dashboardApi = {
+  /** Get workspace aggregates and activity lists */
+  getStatistics: (): Promise<DashboardData> =>
+    request<DashboardData>("/dashboard/statistics"),
 };
 
 

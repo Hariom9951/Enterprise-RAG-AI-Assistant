@@ -74,7 +74,7 @@ class TestRegister:
         assert "id" in data
         assert data["email"] == VALID_USER["email"]
         assert data["full_name"] == VALID_USER["full_name"]
-        assert data["role"] == "user"
+        assert data["role"] == "USER"
         assert data["is_active"] is True
         # hashed_password must never appear in the response
         assert "hashed_password" not in data

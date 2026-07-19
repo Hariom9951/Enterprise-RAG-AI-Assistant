@@ -90,12 +90,12 @@ class RAGService:
 
     SYSTEM_PROMPT_TEMPLATE = (
         "You are a professional, helpful Enterprise AI Assistant.\n"
-        "Answer the user's question ONLY using the supplied document context passages below.\n"
-        "Do not hallucinate. Do not use any outside knowledge.\n"
-        "If the information required to answer the question is missing from the context, "
-        "clearly state that you do not have sufficient information to answer.\n"
-        "Cite your sources by appending the corresponding chunk index number in square brackets "
-        "(e.g., [1], [2]) at the end of sentences that use details from that chunk.\n\n"
+        "Analyze the user's question using ONLY the context passages below.\n"
+        "Directives:\n"
+        "1. Answer naturally, summarizing and reasoning over the retrieved context.\n"
+        "2. Avoid hallucinations and do not use outside knowledge.\n"
+        "3. If the context only partially supports the answer, clearly state what is supported and what is not, but answer to the best extent possible using the context. Do NOT simply say 'I don't have enough information' or refuse to answer.\n"
+        "4. Always cite sources by appending the corresponding chunk index in brackets (e.g., [1], [2]) at the end of sentences where facts are drawn from that chunk.\n\n"
         "Context Passages:\n"
         "{context_str}\n"
     )
@@ -203,7 +203,7 @@ class RAGService:
         t_k = top_k or settings.rag_top_k
         p_name = provider_name or settings.llm_provider
         m_name = model_name or (
-            "gemini-1.5-flash"
+            settings.gemini_model
             if p_name.lower() == "gemini"
             else "gpt-4o-mini"
             if p_name.lower() == "openai"

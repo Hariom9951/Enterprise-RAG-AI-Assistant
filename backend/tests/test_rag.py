@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chunk import Chunk
 from app.models.document import Document
+from app.config.settings import settings
 from app.models.user import User
 from app.services.llm_providers import (
     GeminiProvider,
@@ -46,7 +47,7 @@ class TestLLMProviders:
     @pytest.mark.asyncio
     async def test_gemini_provider_success(self) -> None:
         """Verify that Gemini provider parses REST response and token usage details correctly."""
-        provider = GeminiProvider(api_key="mock_key", model="gemini-1.5-flash")
+        provider = GeminiProvider(api_key="mock_key", model=settings.gemini_model)
 
         mock_response = httpx.Response(
             status_code=200,

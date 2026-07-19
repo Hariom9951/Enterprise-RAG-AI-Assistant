@@ -88,6 +88,10 @@ class AgentRunResult:
     model_name: str | None = None
     success: bool = True
     error_message: str | None = None
+    reasoning_summary: str | None = None
+    confidence_score: float = 0.0
+    citations: list[dict[str, Any]] | None = None
+    retrieved_documents: list[dict[str, Any]] | None = None
 
 
 # =============================================================================
@@ -133,10 +137,13 @@ Rules:
 
     SYSTEM_ANSWER_PROMPT = """You are an enterprise AI assistant. Answer the user's question using ONLY the context provided below.
 
+Write your step-by-step thinking process inside a `<reasoning>...</reasoning>` block.
+Then, write your final answer.
+
 Rules:
 - Be precise and factual. Do not hallucinate.
-- Cite sources using the document name and page number when available.
-- If the context is insufficient, say so clearly.
+- Cite sources by appending the corresponding source index number in square brackets (e.g., [1], [2]) at the end of sentences that use details from that source.
+- If the context is insufficient, explain what is missing rather than flatly refusing to answer.
 - Keep the answer professional and structured.
 
 Context from knowledge base:
@@ -280,12 +287,15 @@ Context from knowledge base:
         context = self._assemble_context(tool_records)
 
         # 5. LLM final answer generation
+        reasoning_summary = None
+        final_answer = ""
+        citations = []
         if llm is not None:
             try:
                 system_prompt = self.SYSTEM_ANSWER_PROMPT.format(
                     context=context or "No relevant context found."
                 )
-                final_answer, usage = await llm.generate_response(
+                raw_answer, usage = await llm.generate_response(
                     system_prompt=system_prompt,
                     user_prompt=question,
                     temperature=temperature,
@@ -293,6 +303,13 @@ Context from knowledge base:
                 )
                 prompt_tokens = usage.get("prompt_tokens", 0)
                 completion_tokens = usage.get("completion_tokens", 0)
+
+                # Parse reasoning tags
+                final_answer = raw_answer
+                reasoning_match = re.search(r"<reasoning>(.*?)</reasoning>", raw_answer, re.DOTALL)
+                if reasoning_match:
+                    reasoning_summary = reasoning_match.group(1).strip()
+                    final_answer = re.sub(r"<reasoning>.*?</reasoning>", "", raw_answer, flags=re.DOTALL).strip()
             except LLMProviderError as exc:
                 logger.error(f"[AgentService] LLM final answer failed: {exc}")
                 final_answer = self._fallback_answer(tool_records)
@@ -308,6 +325,27 @@ Context from knowledge base:
             run_success = False
             error_msg = "LLM provider not configured or failed to load."
 
+        # Collect retrieved documents & chunks from semantic search tools
+        retrieved_documents = []
+        for rec in tool_records:
+            if rec.tool_id == "semantic_search" and isinstance(rec.result.output, list):
+                for chunk in rec.result.output:
+                    retrieved_documents.append({
+                        "chunk_id": str(chunk.get("chunk_id") or chunk.get("id") or ""),
+                        "text": chunk.get("text", ""),
+                        "page_number": chunk.get("page_number", 1),
+                        "section_title": chunk.get("section_title"),
+                        "document_id": str(chunk.get("document_id") or ""),
+                        "document_title": chunk.get("document_name", "Unknown"),
+                        "score": float(chunk.get("score", 0.0))
+                    })
+
+        scores = [d["score"] for d in retrieved_documents if d.get("score") is not None]
+        confidence_score = float(sum(scores) / len(scores)) if scores else 0.0
+
+        # Generate citations
+        citations = self._generate_citations(final_answer, retrieved_documents)
+
         total_latency_ms = int((time.perf_counter() - wall_t0) * 1000)
 
         # Record agent latency metric
@@ -322,7 +360,7 @@ Context from knowledge base:
             user_id=user_id,
             session_id=session_id,
             question=question,
-            final_answer=final_answer,
+            final_answer=raw_answer if llm is not None else final_answer, # Save full answer containing reasoning block
             tool_records=tool_records,
             total_latency_ms=total_latency_ms,
             prompt_tokens=prompt_tokens,
@@ -345,6 +383,10 @@ Context from knowledge base:
             model_name=actual_model,
             success=run_success,
             error_message=error_msg,
+            reasoning_summary=reasoning_summary,
+            confidence_score=confidence_score,
+            citations=citations,
+            retrieved_documents=retrieved_documents,
         )
 
     # ── Intent Classification ─────────────────────────────────────────────────
@@ -503,6 +545,31 @@ Context from knowledge base:
         if context:
             return f"Based on the retrieved documents:\n\n{context[:1000]}"
         return "I was unable to find relevant information to answer your question."
+
+    def _generate_citations(
+        self,
+        answer_text: str,
+        retrieved_docs: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Scan final answer for citation tags and resolve back to retrieved doc metadata."""
+        matches = re.findall(r"\[(\d+)\]", answer_text)
+        cited_indices = sorted(list(set(int(m) for m in matches)))
+
+        citations = []
+        for idx in cited_indices:
+            if 0 < idx <= len(retrieved_docs):
+                item = retrieved_docs[idx - 1]
+                citations.append({
+                    "citation_index": idx,
+                    "chunk_id": item["chunk_id"],
+                    "document_id": item["document_id"],
+                    "document_title": item["document_title"],
+                    "page_number": item["page_number"],
+                    "section_title": item["section_title"],
+                    "text": item["text"],
+                    "score": item["score"],
+                })
+        return citations
 
     # ── Persistence ───────────────────────────────────────────────────────────
 

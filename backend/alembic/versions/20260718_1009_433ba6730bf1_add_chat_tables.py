@@ -44,11 +44,11 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['session_id'], ['chat_sessions.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
-    op.alter_column('chunks', 'embedding',
-               existing_type=sa.NUMERIC(precision=768),
-               type_=pgvector.sqlalchemy.vector.VECTOR(dim=768),
-               existing_nullable=True)
-    op.create_index('ix_chunks_embedding', 'chunks', ['embedding'], unique=False, postgresql_using='hnsw', postgresql_ops={'embedding': 'vector_cosine_ops'})
+    # op.alter_column('chunks', 'embedding',
+    #            existing_type=sa.NUMERIC(precision=768),
+    #            type_=pgvector.sqlalchemy.vector.VECTOR(dim=768),
+    #            existing_nullable=True)
+    # op.create_index('ix_chunks_embedding', 'chunks', ['embedding'], unique=False, postgresql_using='hnsw', postgresql_ops={'embedding': 'vector_cosine_ops'})
     op.alter_column('documents', 'processing_status',
                existing_type=sa.VARCHAR(length=20),
                server_default='UPLOADED',
@@ -62,11 +62,11 @@ def downgrade() -> None:
                existing_type=sa.VARCHAR(length=20),
                server_default=sa.text("'uploaded'"),
                existing_nullable=False)
-    op.drop_index('ix_chunks_embedding', table_name='chunks', postgresql_using='hnsw', postgresql_ops={'embedding': 'vector_cosine_ops'})
-    op.alter_column('chunks', 'embedding',
-               existing_type=pgvector.sqlalchemy.vector.VECTOR(dim=768),
-               type_=sa.NUMERIC(precision=768),
-               existing_nullable=True)
+    # op.drop_index('ix_chunks_embedding', table_name='chunks', postgresql_using='hnsw', postgresql_ops={'embedding': 'vector_cosine_ops'})
+    # op.alter_column('chunks', 'embedding',
+    #            existing_type=pgvector.sqlalchemy.vector.VECTOR(dim=768),
+    #            type_=sa.NUMERIC(precision=768),
+    #            existing_nullable=True)
     op.drop_table('chat_messages')
     op.drop_table('chat_sessions')
     # ### end Alembic commands ###

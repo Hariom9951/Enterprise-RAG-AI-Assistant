@@ -1,0 +1,6 @@
+Enterprise RAG AI Assistant System Verification Document.
+This document is created to verify the document upload, text extraction, semantic search, and RAG capabilities of the Enterprise RAG AI Assistant.
+FastAPI and Next.js are the primary frameworks used in this application.
+It integrates PostgreSQL with the pgvector extension for high-performance vector operations.
+Redis serves as the caching layer and message broker for Celery tasks.
+Everything works beautifully when properly configured.

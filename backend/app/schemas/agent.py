@@ -73,6 +73,10 @@ class AgentChatResponse(BaseModel):
     model_name: str | None = None
     success: bool
     error_message: str | None = None
+    citations: list[dict[str, Any]] | None = Field(default=None, description="Detailed citation references.")
+    confidence_score: float | None = Field(default=0.0, description="Average similarity confidence index.")
+    reasoning_summary: str | None = Field(default=None, description="Extracted reasoning thought process.")
+    retrieved_documents: list[dict[str, Any]] | None = Field(default=None, description="All retrieved document passages.")
 
 
 # =============================================================================
