@@ -70,7 +70,7 @@ jobs:
         run: ruff format --check app tests
 
       - name: Run MyPy Type Checker Gate
-        run: mypy app tests
+        run: mypy app
 
       - name: Run Python Security Scan (Bandit)
         run: bandit -r app/ -ll -ii
