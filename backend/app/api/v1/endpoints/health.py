@@ -36,6 +36,8 @@ async def check_database_conn(db: AsyncSession) -> bool:
 
 async def check_redis_conn() -> bool:
     """Lightweight Redis PING connection test. Fails open in unit tests."""
+    if not settings.enable_redis_caching:
+        return True
     if "pytest" in sys.modules:
         return True
     try:
@@ -59,10 +61,15 @@ async def health_check(db: AsyncSession = Depends(get_db)) -> HealthStatus:
     db_ok = await check_database_conn(db)
     redis_ok = await check_redis_conn()
 
+    if not settings.enable_redis_caching:
+        redis_status = "disabled"
+    else:
+        redis_status = "healthy" if redis_ok else "unhealthy"
+
     components = {
         "api": "healthy",
         "database": "healthy" if db_ok else "unhealthy",
-        "redis": "healthy" if redis_ok else "unhealthy",
+        "redis": redis_status,
     }
 
     overall_status = "healthy"
@@ -124,7 +131,7 @@ async def metrics_endpoint() -> Response:
 
     # 2. Redis Connection & Celery Queue Length
     queue_length = 0
-    if "pytest" not in sys.modules:
+    if settings.enable_redis_caching and "pytest" not in sys.modules:
         try:
             r = Redis.from_url(settings.redis_url)
             queue_length = await r.llen("celery")

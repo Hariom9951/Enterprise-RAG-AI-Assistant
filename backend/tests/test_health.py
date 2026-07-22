@@ -135,6 +135,22 @@ class TestHealthEndpoint:
         response = await client.get("/api/v1/health")
         assert "x-request-id" in response.headers
 
+    @pytest.mark.anyio
+    async def test_health_redis_disabled_returns_disabled_component(
+        self, client: AsyncClient
+    ) -> None:
+        """When enable_redis_caching is False, components['redis'] should be 'disabled'."""
+        from unittest.mock import patch
+
+        from app.config.settings import settings
+
+        with patch.object(settings, "enable_redis_caching", False):
+            response = await client.get("/api/v1/health")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "healthy"
+            assert data["components"]["redis"] == "disabled"
+
 
 # =============================================================================
 # CORS Tests
