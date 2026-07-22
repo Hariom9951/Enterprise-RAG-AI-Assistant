@@ -1,0 +1,61 @@
+# =============================================================================
+# Hugging Face Spaces — Root .dockerignore
+# =============================================================================
+# Only the backend source tree and supporting config files are needed.
+# Everything else is excluded to minimise build context size and image layers.
+# =============================================================================
+
+# ── Exclude frontend (deployed separately to Vercel/Netlify) ─────────────────
+frontend/
+
+# ── Exclude Docker & Nginx config (not used in HF Spaces) ───────────────────
+docker/
+
+# ── Exclude documentation ────────────────────────────────────────────────────
+docs/
+*.md
+!README.md
+
+# ── Exclude CI/CD & scripts ──────────────────────────────────────────────────
+.github/
+scripts/
+
+# ── Exclude Python virtual environments ──────────────────────────────────────
+venv/
+.venv/
+env/
+backend/venv/
+backend/.venv/
+
+# ── Exclude version control ──────────────────────────────────────────────────
+.git/
+.gitignore
+.pre-commit-config.yaml
+
+# ── Exclude local artefacts and caches ───────────────────────────────────────
+backend/logs/
+backend/storage/
+backend/temp/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/*.db
+backend/*.db-journal
+.ruff_cache/
+
+# ── Exclude local environment files (secrets must come from HF Secrets UI) ───
+backend/.env
+backend/.env.production
+backend/.env.development
+backend/.env.staging
+
+# ── Exclude Enterprise-RAG-AI-Assistant subdirectory (duplicate/legacy) ──────
+Enterprise-RAG-AI-Assistant/
+
+# ── Exclude miscellaneous root-level test files ───────────────────────────────
+test_document.txt
+logs/

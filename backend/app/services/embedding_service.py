@@ -15,7 +15,6 @@ from collections.abc import Callable
 from typing import Any
 
 from loguru import logger
-from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,36 +27,56 @@ class EmbeddingService:
     Service for loading and executing local vector embedding models.
     """
 
-    _model: SentenceTransformer | None = None
+    # Type annotation uses a string forward-reference because SentenceTransformer
+    # is not imported at module level (lazy-loaded inside get_model()).
+    _model: "SentenceTransformer | None" = None
     _lock = asyncio.Lock()
 
     def __init__(self) -> None:
         pass
 
     @classmethod
-    async def get_model(cls) -> SentenceTransformer:
+    async def get_model(cls) -> "SentenceTransformer":
         """
-        Load and cache the SentenceTransformers model in an async-safe and thread-safe manner.
-        Loads from config-defined EMBEDDING_MODEL path and loads on EMBEDDING_DEVICE.
+        Lazily load and cache the SentenceTransformers model on first call.
+
+        The import of ``sentence_transformers`` is intentionally deferred to
+        this method body rather than the module level.  This prevents the
+        ~500 MB library (and its transitive deps: torch, transformers, etc.)
+        from being imported at container startup, which would exhaust RAM on
+        memory-constrained runtimes such as Hugging Face Spaces free tier
+        before the first HTTP request is received.
+
+        Thread-safety is guaranteed by the class-level ``asyncio.Lock``.
         """
         if cls._model is None:
             async with cls._lock:
-                # Double-check inside lock
+                # Double-check pattern — another coroutine may have loaded the
+                # model while we were waiting for the lock.
                 if cls._model is None:
+                    # ── Deferred import (lazy-load) ───────────────────────────
+                    # Imported here so the heavy torch/transformers stack is
+                    # only pulled into memory when embedding is actually needed.
+                    from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+
                     model_name = settings.embedding_model
                     device = settings.embedding_device
                     logger.info(
-                        f"Loading SentenceTransformers model '{model_name}' on device '{device}'..."
+                        f"[Embedding] Lazy-loading SentenceTransformers model "
+                        f"'{model_name}' on device '{device}'..."
                     )
                     start_time = time.perf_counter()
 
-                    # Force model loading in a separate thread to prevent blocking ASGI event loop during startup
+                    # Run synchronous model load in a thread pool to avoid
+                    # blocking the ASGI event loop.
                     cls._model = await asyncio.to_thread(
                         SentenceTransformer, model_name, device=device
                     )
 
                     duration = time.perf_counter() - start_time
-                    logger.info(f"Loaded model successfully in {duration:.3f} seconds.")
+                    logger.info(
+                        f"[Embedding] Model loaded successfully in {duration:.3f}s."
+                    )
         return cls._model
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:

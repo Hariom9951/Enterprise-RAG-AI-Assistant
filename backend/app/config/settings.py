@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Load .env first, then .env.production as a fallback.
+        # Hugging Face Spaces injects secrets as real environment variables
+        # (highest priority), so .env files only matter for local development.
+        env_file=[".env", ".env.production"],
         env_file_encoding="utf-8",
         case_sensitive=False,  # Allow both APP_NAME and app_name
         extra="ignore",  # Ignore unknown env vars silently
@@ -62,7 +65,12 @@ class Settings(BaseSettings):
     # Server
     # -------------------------------------------------------------------------
     host: str = Field(default="0.0.0.0", description="Bind address for Uvicorn.")
-    port: int = Field(default=8000, ge=1, le=65535, description="Bind port.")
+    port: int = Field(
+        default=7860,
+        ge=1,
+        le=65535,
+        description="Bind port. Defaults to 7860 for Hugging Face Spaces compatibility.",
+    )
     workers: int = Field(
         default=1,
         ge=1,
@@ -117,12 +125,15 @@ class Settings(BaseSettings):
         description="Minimum log level to emit.",
     )
     log_format: Literal["text", "json"] = Field(
-        default="text",
-        description="Log output format. Use 'json' in production.",
+        default="json",
+        description="Log output format. 'json' for production (HF Spaces default); 'text' for local dev.",
     )
     log_file_path: str = Field(
-        default="logs/app.log",
-        description="File path for persistent log output. Empty string disables.",
+        default="",
+        description=(
+            "File path for persistent log output. Empty string (default) disables file logging "
+            "so all output goes to stdout — required for Hugging Face Spaces and container environments."
+        ),
     )
 
     # -------------------------------------------------------------------------

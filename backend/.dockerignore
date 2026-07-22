@@ -28,8 +28,17 @@ __pycache__/
 .git/
 .github/
 
-# Ignore local config files
+# Ignore local config files (secrets must come from HF Spaces Secrets UI or env vars)
 .env
 .env.production
 .env.development
 .env.staging
+
+# Ignore test artifacts (not needed at runtime)
+tests/
+
+# Ignore alembic version scripts (applied via CMD entrypoint, not baked in)
+# Keep alembic.ini and alembic/ directory for migration runner
+# Exclude only the __pycache__ inside alembic
+alembic/__pycache__/
+

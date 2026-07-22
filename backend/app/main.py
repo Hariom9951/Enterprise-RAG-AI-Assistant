@@ -53,21 +53,41 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     at shutdown. This is the recommended FastAPI pattern for resource
     initialisation and cleanup (replaces the deprecated on_event hooks).
     """
-    # ── Startup ───────────────────────────────────────────────────────────────
+    # ── Startup ─────────────────────────────────────────────────────────────────────────
     logger.info(
         f"[START] Starting {settings.app_name} v{settings.app_version}",
         extra={"environment": settings.environment, "debug": settings.debug},
     )
 
+    # Log active configuration for observability (no secrets)
+    logger.info(
+        f"[CONFIG] Port={settings.port} | Environment={settings.environment} "
+        f"| LogFormat={settings.log_format} | Workers={settings.workers}"
+    )
+
     if settings.gemini_api_key:
         logger.info("[CONFIG] Google Gemini API Key is configured and detected.")
     else:
-        logger.warning("[CONFIG] Google Gemini API Key is NOT configured.")
+        logger.warning(
+            "[CONFIG] Google Gemini API Key is NOT configured. "
+            "RAG and chat endpoints will fail until GEMINI_API_KEY is set "
+            "(use Hugging Face Spaces Secrets UI)."
+        )
 
     # Phase 2: Verify database connectivity.
-    await verify_database_connection()
+    # Non-fatal: warns but does NOT crash if DATABASE_URL is missing or
+    # unreachable at startup.  This allows the container to start and expose
+    # /api/v1/health so operators can see the problem before it is corrected.
+    try:
+        await verify_database_connection()
+    except Exception as db_exc:
+        logger.warning(
+            f"[CONFIG] Database connection could not be verified at startup: {db_exc}. "
+            "Ensure DATABASE_URL (Neon PostgreSQL) is set via Hugging Face Spaces Secrets. "
+            "The application will continue starting but DB-dependent endpoints will fail."
+        )
 
-    # Ensure Phase 3 local storage directories exist.
+    # Ensure local storage directories exist (idempotent).
     import os
 
     for folder in ["uploads", "processed", "failed", "temp"]:
@@ -82,7 +102,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
-    # ── Shutdown ──────────────────────────────────────────────────────────────
+    # ── Shutdown ────────────────────────────────────────────────────────────────────────
     logger.info("[STOP] Shutting down application ...")
 
     # Phase 2: Dispose the database connection pool.
