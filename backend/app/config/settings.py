@@ -28,10 +28,10 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        # Load .env first, then .env.production as a fallback.
-        # Hugging Face Spaces injects secrets as real environment variables
-        # (highest priority), so .env files only matter for local development.
-        env_file=[".env", ".env.production"],
+        # Load .env for local development. On Hugging Face Spaces, secrets are
+        # injected as real OS environment variables (highest priority) so no
+        # production env file is needed or loaded — the OS env always wins.
+        env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,  # Allow both APP_NAME and app_name
         extra="ignore",  # Ignore unknown env vars silently
