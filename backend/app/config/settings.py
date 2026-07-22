@@ -64,7 +64,10 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Server
     # -------------------------------------------------------------------------
-    host: str = Field(default="0.0.0.0", description="Bind address for Uvicorn.")
+    host: str = Field(
+        default="0.0.0.0",  # nosec B104
+        description="Bind address for Uvicorn.",
+    )
     port: int = Field(
         default=7860,
         ge=1,
