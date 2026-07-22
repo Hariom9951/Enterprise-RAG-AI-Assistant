@@ -143,7 +143,9 @@ def create_app() -> FastAPI:
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
         # Control openapi schema visibility based on docs path presence
-        openapi_url="/openapi.json" if (settings.docs_url or settings.redoc_url) else None,
+        openapi_url="/openapi.json"
+        if (settings.docs_url or settings.redoc_url)
+        else None,
         lifespan=lifespan,
     )
 

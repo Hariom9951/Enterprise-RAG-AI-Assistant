@@ -501,7 +501,10 @@ class TestRetrievalAPI:
         }
 
         # Patch the embedding service used inside endpoints
-        with patch("app.services.embedding_service.EmbeddingService.embed_batch", return_value=[mock_vector]):
+        with patch(
+            "app.services.embedding_service.EmbeddingService.embed_batch",
+            return_value=[mock_vector],
+        ):
             resp = await client.post(
                 "/api/v1/search", json=search_payload, headers=headers
             )

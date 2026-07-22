@@ -234,9 +234,7 @@ async def validation_exception_handler(
     )
 
 
-async def http_exception_handler(
-    request: Request, exc: Any
-) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: Any) -> JSONResponse:
     """Format HTTP exceptions in a uniform JSON structure."""
     logger.warning(
         "HTTP exception",
@@ -266,6 +264,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     Call this from ``main.py`` after creating the ``app`` object.
     """
     from starlette.exceptions import HTTPException as StarletteHTTPException
+
     app.add_exception_handler(AppException, app_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]

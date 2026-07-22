@@ -15,6 +15,7 @@ from app.api.v1.endpoints.agent import router as agent_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.chat import router as chat_router
 from app.api.v1.endpoints.chunks import router as chunks_router
+from app.api.v1.endpoints.dashboard import router as dashboard_router
 from app.api.v1.endpoints.documents import router as documents_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.jobs import router as jobs_router
@@ -22,7 +23,6 @@ from app.api.v1.endpoints.rag import router as rag_router
 from app.api.v1.endpoints.root import router as root_router
 from app.api.v1.endpoints.search import router as search_router
 from app.api.v1.endpoints.users import router as users_router
-from app.api.v1.endpoints.dashboard import router as dashboard_router
 
 # The top-level v1 router — all routes registered here will be mounted
 # under the API_V1_PREFIX defined in settings (default: /api/v1).

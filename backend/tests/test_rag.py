@@ -15,9 +15,9 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config.settings import settings
 from app.models.chunk import Chunk
 from app.models.document import Document
-from app.config.settings import settings
 from app.models.user import User
 from app.services.llm_providers import (
     GeminiProvider,

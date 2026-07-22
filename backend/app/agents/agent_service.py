@@ -154,7 +154,7 @@ Context from knowledge base:
 
     # ── Public Entry Point ────────────────────────────────────────────────────
 
-    async def run(
+    async def run(  # noqa: C901
         self,
         db: AsyncSession,
         question: str,
@@ -306,10 +306,14 @@ Context from knowledge base:
 
                 # Parse reasoning tags
                 final_answer = raw_answer
-                reasoning_match = re.search(r"<reasoning>(.*?)</reasoning>", raw_answer, re.DOTALL)
+                reasoning_match = re.search(
+                    r"<reasoning>(.*?)</reasoning>", raw_answer, re.DOTALL
+                )
                 if reasoning_match:
                     reasoning_summary = reasoning_match.group(1).strip()
-                    final_answer = re.sub(r"<reasoning>.*?</reasoning>", "", raw_answer, flags=re.DOTALL).strip()
+                    final_answer = re.sub(
+                        r"<reasoning>.*?</reasoning>", "", raw_answer, flags=re.DOTALL
+                    ).strip()
             except LLMProviderError as exc:
                 logger.error(f"[AgentService] LLM final answer failed: {exc}")
                 final_answer = self._fallback_answer(tool_records)
@@ -330,15 +334,19 @@ Context from knowledge base:
         for rec in tool_records:
             if rec.tool_id == "semantic_search" and isinstance(rec.result.output, list):
                 for chunk in rec.result.output:
-                    retrieved_documents.append({
-                        "chunk_id": str(chunk.get("chunk_id") or chunk.get("id") or ""),
-                        "text": chunk.get("text", ""),
-                        "page_number": chunk.get("page_number", 1),
-                        "section_title": chunk.get("section_title"),
-                        "document_id": str(chunk.get("document_id") or ""),
-                        "document_title": chunk.get("document_name", "Unknown"),
-                        "score": float(chunk.get("score", 0.0))
-                    })
+                    retrieved_documents.append(
+                        {
+                            "chunk_id": str(
+                                chunk.get("chunk_id") or chunk.get("id") or ""
+                            ),
+                            "text": chunk.get("text", ""),
+                            "page_number": chunk.get("page_number", 1),
+                            "section_title": chunk.get("section_title"),
+                            "document_id": str(chunk.get("document_id") or ""),
+                            "document_title": chunk.get("document_name", "Unknown"),
+                            "score": float(chunk.get("score", 0.0)),
+                        }
+                    )
 
         scores = [d["score"] for d in retrieved_documents if d.get("score") is not None]
         confidence_score = float(sum(scores) / len(scores)) if scores else 0.0
@@ -360,7 +368,9 @@ Context from knowledge base:
             user_id=user_id,
             session_id=session_id,
             question=question,
-            final_answer=raw_answer if llm is not None else final_answer, # Save full answer containing reasoning block
+            final_answer=raw_answer
+            if llm is not None
+            else final_answer,  # Save full answer containing reasoning block
             tool_records=tool_records,
             total_latency_ms=total_latency_ms,
             prompt_tokens=prompt_tokens,
@@ -559,16 +569,18 @@ Context from knowledge base:
         for idx in cited_indices:
             if 0 < idx <= len(retrieved_docs):
                 item = retrieved_docs[idx - 1]
-                citations.append({
-                    "citation_index": idx,
-                    "chunk_id": item["chunk_id"],
-                    "document_id": item["document_id"],
-                    "document_title": item["document_title"],
-                    "page_number": item["page_number"],
-                    "section_title": item["section_title"],
-                    "text": item["text"],
-                    "score": item["score"],
-                })
+                citations.append(
+                    {
+                        "citation_index": idx,
+                        "chunk_id": item["chunk_id"],
+                        "document_id": item["document_id"],
+                        "document_title": item["document_title"],
+                        "page_number": item["page_number"],
+                        "section_title": item["section_title"],
+                        "text": item["text"],
+                        "score": item["score"],
+                    }
+                )
         return citations
 
     # ── Persistence ───────────────────────────────────────────────────────────

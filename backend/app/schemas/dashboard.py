@@ -51,15 +51,29 @@ class RecentAgentRunItem(BaseModel):
 
 
 class DashboardStatisticsResponse(BaseModel):
-    total_documents: int = Field(..., description="Total documents uploaded by this user.")
-    total_chunks: int = Field(..., description="Total semantic chunks derived from user documents.")
-    total_embeddings: int = Field(..., description="Total chunks with generated vectors.")
+    total_documents: int = Field(
+        ..., description="Total documents uploaded by this user."
+    )
+    total_chunks: int = Field(
+        ..., description="Total semantic chunks derived from user documents."
+    )
+    total_embeddings: int = Field(
+        ..., description="Total chunks with generated vectors."
+    )
     total_conversations: int = Field(..., description="Total active chat sessions.")
     todays_queries: int = Field(..., description="Total RAG queries executed today.")
-    average_latency_ms: float = Field(..., description="Average RAG latency in milliseconds.")
-    average_similarity: float = Field(..., description="Average similarity metric across queries.")
-    most_used_llm: str = Field(..., description="Name of the most frequently queried LLM model.")
-    storage_usage_bytes: int = Field(..., description="Cumulative storage bytes consumed by uploads.")
+    average_latency_ms: float = Field(
+        ..., description="Average RAG latency in milliseconds."
+    )
+    average_similarity: float = Field(
+        ..., description="Average similarity metric across queries."
+    )
+    most_used_llm: str = Field(
+        ..., description="Name of the most frequently queried LLM model."
+    )
+    storage_usage_bytes: int = Field(
+        ..., description="Cumulative storage bytes consumed by uploads."
+    )
     recent_uploads: list[RecentUploadItem] = Field(default_factory=list)
     recent_conversations: list[RecentConversationItem] = Field(default_factory=list)
     recent_searches: list[RecentSearchItem] = Field(default_factory=list)

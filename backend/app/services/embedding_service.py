@@ -12,11 +12,17 @@ import datetime
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    # SentenceTransformer is only imported during type-checking (e.g. mypy, pyright).
+    # At runtime the class is lazy-loaded inside get_model() to avoid pulling the
+    # ~500 MB torch stack into memory on container startup.
+    from sentence_transformers import SentenceTransformer
 
 from app.config.settings import settings
 from app.models.chunk import Chunk
@@ -27,16 +33,17 @@ class EmbeddingService:
     Service for loading and executing local vector embedding models.
     """
 
-    # Type annotation uses a string forward-reference because SentenceTransformer
-    # is not imported at module level (lazy-loaded inside get_model()).
-    _model: "SentenceTransformer | None" = None
+    # _model holds the lazily-loaded SentenceTransformer instance.
+    # The TYPE_CHECKING guard above makes the annotation valid for type checkers
+    # without triggering a runtime import of the heavy sentence-transformers library.
+    _model: SentenceTransformer | None = None
     _lock = asyncio.Lock()
 
     def __init__(self) -> None:
         pass
 
     @classmethod
-    async def get_model(cls) -> "SentenceTransformer":
+    async def get_model(cls) -> SentenceTransformer:
         """
         Lazily load and cache the SentenceTransformers model on first call.
 
@@ -57,7 +64,9 @@ class EmbeddingService:
                     # ── Deferred import (lazy-load) ───────────────────────────
                     # Imported here so the heavy torch/transformers stack is
                     # only pulled into memory when embedding is actually needed.
-                    from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+                    from sentence_transformers import (
+                        SentenceTransformer,  # noqa: PLC0415
+                    )
 
                     model_name = settings.embedding_model
                     device = settings.embedding_device

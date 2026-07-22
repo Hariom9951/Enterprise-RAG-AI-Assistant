@@ -63,9 +63,7 @@ class GeminiProvider(LLMProvider):
     Client for Google Gemini API via native REST requests.
     """
 
-    def __init__(
-        self, api_key: str | None = None, model: str | None = None
-    ) -> None:
+    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self.api_key = api_key or settings.gemini_api_key
         self.model = model or settings.gemini_model
 

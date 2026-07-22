@@ -115,6 +115,7 @@ class RetrievalService:
         import sys
 
         if settings.enable_redis_caching and "pytest" not in sys.modules:
+
             def json_safe_value(val: Any) -> Any:
                 if isinstance(val, uuid.UUID):
                     return str(val)
@@ -123,8 +124,11 @@ class RetrievalService:
                 if isinstance(val, dict):
                     return {k: json_safe_value(v) for k, v in val.items()}
                 return val
+
             safe_filters = json_safe_value(filters) if filters else None
-            filter_str = json.dumps(safe_filters, sort_keys=True) if safe_filters else ""
+            filter_str = (
+                json.dumps(safe_filters, sort_keys=True) if safe_filters else ""
+            )
             hash_input = f"{query_text}:{top_k}:{threshold}:{filter_str}:{offset}:{normalize_scores}"
             query_hash = hashlib.sha256(hash_input.encode()).hexdigest()
             cache_key = f"cache:search:{user_id}:{query_hash}"
