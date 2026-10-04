@@ -56,6 +56,7 @@ config.set_main_option("sqlalchemy.url", settings.database_url)
 # Offline Mode (generate SQL without connecting to DB)
 # =============================================================================
 
+
 def run_migrations_offline() -> None:
     """
     Run migrations in 'offline' mode.
@@ -72,7 +73,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        compare_type=True,         # Detect column type changes
+        compare_type=True,  # Detect column type changes
         compare_server_default=True,
     )
 
@@ -83,6 +84,7 @@ def run_migrations_offline() -> None:
 # =============================================================================
 # Online Mode (connect to DB and apply migrations)
 # =============================================================================
+
 
 def do_run_migrations(connection: Connection) -> None:
     """Run migrations using a synchronous connection (required by Alembic)."""
@@ -105,7 +107,7 @@ async def run_migrations_online() -> None:
     """
     connectable = create_async_engine(
         settings.database_url,
-        poolclass=pool.NullPool,   # Never pool connections during migrations
+        poolclass=pool.NullPool,  # Never pool connections during migrations
     )
 
     async with connectable.connect() as connection:

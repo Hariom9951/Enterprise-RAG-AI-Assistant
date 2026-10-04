@@ -40,7 +40,7 @@ class RAGQueryRequest(BaseModel):
         default=True, description="Enable metadata, freshness, similarity reranking."
     )
     provider: str | None = Field(
-        default=None, description="Optional provider override (gemini, openai, ollama)."
+        default=None, description="Optional provider override (default: gemini)."
     )
     model: str | None = Field(default=None, description="Optional model name override.")
 

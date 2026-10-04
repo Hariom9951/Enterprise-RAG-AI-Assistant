@@ -2,13 +2,11 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { UploadCloud, CheckCircle, AlertTriangle, ArrowLeft, FileText, Loader2 } from "lucide-react";
 import { documentsApi } from "@/lib/api";
 import Navigation from "@/components/Navigation";
 
 export default function UploadPage() {
-  const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);

@@ -150,11 +150,11 @@ def create_app() -> FastAPI:
     )
 
     # ── 3. Register middleware (order matters — outermost registered last) ────
-    add_cors_middleware(application)
     application.add_middleware(RequestLoggingMiddleware)
     application.add_middleware(RequestBodySizeLimitMiddleware)
     application.add_middleware(RateLimitingMiddleware)
     application.add_middleware(SecurityHeadersMiddleware)
+    add_cors_middleware(application)
 
     # ── 4. Register global exception handlers ─────────────────────────────────
     register_exception_handlers(application)

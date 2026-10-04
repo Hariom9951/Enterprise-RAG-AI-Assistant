@@ -10,7 +10,7 @@ import type { AgentToolCallResponse } from "@/lib/agentApi";
 
 interface AgentTimelineProps {
   toolCalls: AgentToolCallResponse[];
-  totalLatencyMs: number;
+  totalLatencyMs?: number;
   isLoading?: boolean;
 }
 

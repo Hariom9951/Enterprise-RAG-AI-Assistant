@@ -86,6 +86,7 @@ class EmbeddingService:
                     logger.info(
                         f"[Embedding] Model loaded successfully in {duration:.3f}s."
                     )
+        assert cls._model is not None
         return cls._model
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:

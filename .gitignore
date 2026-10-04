@@ -211,6 +211,10 @@ lib-cov/
 # -----------------------------------------------------------------------------
 # Uploaded file storage (generated at runtime — not source code)
 backend/storage/
+storage/
+
+# Local Redis binaries on Windows
+redis/
 
 # SQLite local dev database
 *.db
@@ -222,3 +226,6 @@ backend/alembic/__pycache__/
 
 # Tasks package init (auto-generated)
 backend/app/tasks/__init__.py
+
+# Generated project report PDF
+Enterprise_RAG_AI_Assistant_Complete_Project_Report.pdf

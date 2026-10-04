@@ -22,7 +22,6 @@ from app.models.user import User
 from app.services.llm_providers import (
     GeminiProvider,
     LLMProviderError,
-    OpenAIProvider,
 )
 from app.services.rag_service import RAGService
 
@@ -74,38 +73,23 @@ class TestLLMProviders:
             assert usage["total_tokens"] == 23
 
     @pytest.mark.asyncio
-    async def test_openai_provider_success(self) -> None:
-        """Verify that OpenAI provider parses standard API responses correctly."""
-        provider = OpenAIProvider(api_key="mock_key", model="gpt-4o-mini")
+    async def test_gemini_provider_api_error(self) -> None:
+        """Verify that Gemini provider raises LLMProviderError on API failure."""
+        provider = GeminiProvider(api_key="mock_key", model=settings.gemini_model)
 
         mock_response = httpx.Response(
-            status_code=200,
-            json={
-                "choices": [
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "content": "OpenAI response text [1].",
-                        }
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": 12,
-                    "completion_tokens": 6,
-                    "total_tokens": 18,
-                },
-            },
+            status_code=400,
+            text="Invalid model parameter",
         )
 
-        with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
-            text, usage = await provider.generate_response(
-                system_prompt="sys", user_prompt="usr", temperature=0.2, max_tokens=100
-            )
-            mock_post.assert_called_once()
-            assert text == "OpenAI response text [1]."
-            assert usage["prompt_tokens"] == 12
-            assert usage["completion_tokens"] == 6
-            assert usage["total_tokens"] == 18
+        with patch("httpx.AsyncClient.post", return_value=mock_response):
+            with pytest.raises(LLMProviderError):
+                await provider.generate_response(
+                    system_prompt="sys",
+                    user_prompt="usr",
+                    temperature=0.2,
+                    max_tokens=100,
+                )
 
     @pytest.mark.asyncio
     async def test_provider_missing_keys(self) -> None:
@@ -307,8 +291,9 @@ class TestRAGEndpoints:
             resp_models = await client.get("/api/v1/rag/models", headers=headers)
             assert resp_models.status_code == 200
             models = resp_models.json()
-            assert len(models) == 3
+            assert len(models) == 1
             assert models[0]["provider"] == "GEMINI"
+            assert models[0]["is_default"] is True
 
             # 4. Test GET /api/v1/rag/statistics
             resp_stats = await client.get("/api/v1/rag/statistics", headers=headers)

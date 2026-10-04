@@ -1,424 +1,328 @@
-# 🚢 Deployment Guide
+# 🚢 Enterprise RAG AI Assistant — Production Deployment Guide
 
-> Step-by-step production deployment for the Enterprise RAG AI Assistant.
+> Step-by-step production deployment and operations manual for the Enterprise RAG AI Assistant.
 
 ---
 
 ## Table of Contents
 
 1. [Prerequisites](#1-prerequisites)
-2. [Environment Setup](#2-environment-setup)
-3. [Docker Deployment](#3-docker-deployment)
-4. [Database Initialization](#4-database-initialization)
-5. [Nginx Reverse Proxy](#5-nginx-reverse-proxy)
-6. [SSL/TLS Configuration](#6-ssltls-configuration)
-7. [Health Verification](#7-health-verification)
-8. [Log Management](#8-log-management)
-9. [Backup & Restore](#9-backup--restore)
-10. [Scaling Workers](#10-scaling-workers)
-11. [Environment Reference](#11-environment-reference)
-12. [Common Issues](#12-common-issues)
+2. [Production Environment Variables](#2-production-environment-variables)
+3. [Database Migration Command](#3-database-migration-command)
+4. [Redis Setup & Message Broker](#4-redis-setup--message-broker)
+5. [Celery Worker & Scheduler Setup](#5-celery-worker--scheduler-setup)
+6. [Backend Service Startup](#6-backend-service-startup)
+7. [Frontend Production Startup](#7-frontend-production-startup)
+8. [Docker & Containerized Deployment](#8-docker--containerized-deployment)
+9. [Health-Check & Readiness URLs](#9-health-check--readiness-urls)
+10. [Production Security Notes](#10-production-security-notes)
+11. [Troubleshooting & Runbook](#11-troubleshooting--runbook)
 
 ---
 
 ## 1. Prerequisites
 
-| Requirement | Version | Notes |
+| Component | Minimum Version | Production Specification |
 |---|---|---|
-| Docker | 24+ | [Install guide](https://docs.docker.com/get-docker/) |
-| Docker Compose | 2.x (CLI plugin) | Bundled with Docker Desktop |
-| 2+ GB RAM | — | Embedding model requires ~500MB RAM |
-| 10+ GB Disk | — | For PostgreSQL data and document storage |
-| Linux server | Ubuntu 22.04+ recommended | Or any Docker-compatible OS |
+| **Python** | 3.12+ | CPython 64-bit |
+| **Node.js** | 20+ LTS | Node.js with npm 10+ |
+| **PostgreSQL** | 16+ | PostgreSQL with `pgvector` (`v0.5.0+`) extension enabled |
+| **Redis** | 7.0+ | In-memory cache & Celery broker (Upstash Redis TLS supported) |
+| **Docker** | 24+ | Engine with Docker Compose v2 (optional for containerized deploys) |
+| **CPU / RAM** | 2 vCPU / 4 GB RAM | Embedding model (`BAAI/bge-base-en-v1.5`) requires ~500MB RAM |
+| **Storage** | 20+ GB SSD | Persistent storage for document uploads (`storage/uploads/`) |
 
 ---
 
-## 2. Environment Setup
+## 2. Production Environment Variables
 
-### Clone Repository
+### Backend Configuration (`backend/.env` or Container Environment)
 
-```bash
-git clone https://github.com/Hariom9951/Enterprise-RAG-AI-Assistant.git
-cd Enterprise-RAG-AI-Assistant
-```
-
-### Configure Backend Environment
+The backend strictly validates environment variables on startup. In production (`ENVIRONMENT=production`), the system rejects insecure defaults and placeholders.
 
 ```bash
-cd backend
-cp .env.example .env
-```
-
-Edit `backend/.env` and set all required values:
-
-```bash
-# Generate a strong secret key
-python -c "import secrets; print(secrets.token_hex(32))"
-
-# Required values to set:
-SECRET_KEY=<generated-key>
-GEMINI_API_KEY=<your-google-ai-studio-key>
-
-# Production settings
+# Core Environment
+APP_NAME="Enterprise RAG AI Assistant"
 ENVIRONMENT=production
 DEBUG=false
-LOG_FORMAT=json
-LOG_LEVEL=INFO
+
+# Networking & Bind
+HOST=0.0.0.0
+PORT=8000
 WORKERS=4
+RELOAD=false
+
+# Security & CORS (REQUIRED: non-wildcard in production)
+# Format: comma-separated list of exact allowed browser origins
+ALLOWED_ORIGINS=https://app.yourcompany.com,https://rag.yourcompany.com
+ALLOW_CREDENTIALS=true
+
+# JWT Signing Secret (REQUIRED: >= 32 characters, no placeholders)
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=replace_with_cryptographically_secure_hex_token_at_least_32_chars
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Database Connection (REQUIRED: PostgreSQL + pgvector)
+# Format: postgresql+asyncpg://<user>:<password>@<host>:<port>/<dbname>
+DATABASE_URL=postgresql+asyncpg://raguser:<password>@postgres-host:5432/ragdb?sslmode=require
+
+# Redis & Broker Connection (REQUIRED: Redis 7+)
+# Format: redis://[:password@]host:port/db or rediss:// for TLS
+REDIS_URL=redis://redis-host:6379/0
+ENABLE_REDIS_CACHING=true
+REDIS_CACHE_TTL_SECONDS=3600
+
+# Google Gemini LLM (REQUIRED: Verified Runtime Model)
+GEMINI_API_KEY=AIzaSy...your_google_ai_studio_api_key
+GEMINI_MODEL=gemini-3.5-flash
+LLM_PROVIDER=gemini
+
+# RAG & Embedding Hyperparameters
+EMBEDDING_MODEL_NAME=BAAI/bge-base-en-v1.5
+EMBEDDING_DIMENSION=768
+RAG_TOP_K=10
+RAG_SIMILARITY_THRESHOLD=0.0
+RAG_MAX_CONTEXT_TOKENS=3000
+
+# Storage Directories
+STORAGE_DIR=/app/storage
 ```
 
-> ⚠️ **Never commit `.env` to version control.** The `.gitignore` already excludes it.
+### Frontend Configuration (`frontend/.env.production`)
 
-### Optional: Configure Production DB Password
-
-In `.env`:
 ```bash
-DB_PASSWORD=your-strong-db-password-here
-```
+NODE_ENV=production
+NEXT_TELEMETRY_DISABLED=1
 
-And update `docker-compose.yml` accordingly, or use the `${DB_PASSWORD}` substitution already in place.
+# Public API Gateway URL accessed from client browsers
+NEXT_PUBLIC_API_URL=https://rag.yourcompany.com/api/v1
+
+# Internal Docker / SSR API Gateway URL (Server-to-Server)
+API_INTERNAL_URL=http://backend:8000/api/v1
+
+PORT=3000
+HOSTNAME=0.0.0.0
+```
 
 ---
 
-## 3. Docker Deployment
+## 3. Database Migration Command
 
-### Build and Start All Services
+The schema uses SQLAlchemy 2.0 with Alembic. The `vector` extension and all tables (`users`, `documents`, `processed_documents`, `chunks`, `search_queries`, `rag_queries`, `chat_sessions`, `chat_messages`, `agent_runs`, `agent_tool_calls`) are applied via Alembic:
 
 ```bash
-# From project root — builds all images and starts 6 services
+# From backend directory:
+cd backend
+alembic upgrade head
+```
+
+### Verify Migration Status:
+```bash
+alembic current
+# Verify vector extension in PostgreSQL:
+psql -U raguser -d ragdb -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+```
+
+---
+
+## 4. Redis Setup & Message Broker
+
+Redis is used simultaneously as the Celery asynchronous task broker and as the API caching/rate-limiting layer.
+
+### Standalone Linux:
+```bash
+sudo apt update && sudo apt install -y redis-server
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+redis-cli ping
+# Output: PONG
+```
+
+### Managed Redis (Upstash / AWS ElastiCache):
+Provide TLS URL with `rediss://` protocol in `REDIS_URL`:
+```bash
+REDIS_URL=rediss://default:token@cluster-name.upstash.io:6379
+```
+
+---
+
+## 5. Celery Worker & Scheduler Setup
+
+Asynchronous document parsing (PDF, DOCX, TXT), semantic chunking, and BAAI dense embedding generation are handled by Celery workers.
+
+### Start Celery Worker (Production Linux):
+```bash
+cd backend
+celery -A app.tasks.celery_app worker \
+  --loglevel=info \
+  --concurrency=4 \
+  --max-tasks-per-child=100
+```
+
+*Note for Windows development:* Use `--pool=solo` on Windows hosts:
+```powershell
+celery -A app.tasks.celery_app worker --loglevel=info --pool=solo
+```
+
+### Start Celery Beat (Scheduled Tasks / Daily Cleanup):
+```bash
+cd backend
+celery -A app.tasks.celery_app beat \
+  --loglevel=info \
+  --schedule=/tmp/celerybeat-schedule
+```
+
+### Verify Celery Cluster Health:
+```bash
+celery -A app.tasks.celery_app inspect ping
+celery -A app.tasks.celery_app inspect active
+```
+
+---
+
+## 6. Backend Service Startup
+
+### Production Command (Uvicorn / FastAPI):
+```bash
+cd backend
+uvicorn app.main:app \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --workers 4 \
+  --no-access-log \
+  --proxy-headers \
+  --forwarded-allow-ips="*"
+```
+
+### Systemd Service Template (`/etc/systemd/system/rag-backend.service`):
+```ini
+[Unit]
+Description=Enterprise RAG AI Assistant Backend
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=raguser
+WorkingDirectory=/opt/enterprise-rag/backend
+EnvironmentFile=/opt/enterprise-rag/backend/.env
+ExecStart=/opt/enterprise-rag/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+---
+
+## 7. Frontend Production Startup
+
+The Next.js 16 frontend is compiled into an optimized standalone Node.js server.
+
+### Build the Standalone Bundle:
+```bash
+cd frontend
+npm ci --legacy-peer-deps
+npm run build
+```
+
+### Start the Production Frontend Server:
+```bash
+# Option A: Standalone output mode (recommended, minimal footprint)
+cd frontend/.next/standalone
+PORT=3000 HOSTNAME=0.0.0.0 node server.js
+
+# Option B: Standard Next.js runner
+cd frontend
+npm run start -- -p 3000 -H 0.0.0.0
+```
+
+---
+
+## 8. Docker & Containerized Deployment
+
+A production multi-container setup is orchestrated via `docker-compose.yml`:
+
+```bash
+# Build and start all 6 services (postgres, redis, backend, celery_worker, celery_beat, frontend):
 docker compose up --build -d
-```
 
-This starts:
+# Execute database migrations:
+docker compose exec backend alembic upgrade head
 
-| Container | Role | Port |
-|---|---|---|
-| `rag_postgres` | PostgreSQL 16 + pgvector | 5432 |
-| `rag_redis` | Redis 7 cache + broker | 6379 |
-| `rag_backend` | FastAPI + Uvicorn | 8000 |
-| `rag_celery_worker` | Celery document processor | — |
-| `rag_celery_beat` | Celery periodic scheduler | — |
-| `rag_frontend` | Next.js standalone | 3000 |
-
-### Check Service Status
-
-```bash
+# View running container status:
 docker compose ps
-```
 
-All services should show `Up (healthy)` or `Up` status.
-
-### View Logs
-
-```bash
-# All services
-docker compose logs -f
-
-# Specific service
+# Tail logs:
 docker compose logs -f backend
 docker compose logs -f celery_worker
 ```
 
 ---
 
-## 4. Database Initialization
+## 9. Health-Check & Readiness URLs
 
-After the containers start, run Alembic migrations to create all tables:
+The backend exposes automated endpoints for container orchestration, load balancers, and monitoring systems:
 
+| Endpoint | Method | Purpose | Expected Status |
+|---|---|---|---|
+| `/api/v1/health` | `GET` | Overall system health (checks DB, Redis, App state) | `200 OK`, `{"status": "healthy"}` |
+| `/api/v1/health/live` | `GET` | Kubernetes liveness probe (checks process responsiveness) | `200 OK`, `{"status": "live"}` |
+| `/api/v1/health/ready` | `GET` | Kubernetes readiness probe (checks DB pool & model readiness) | `200 OK`, `{"status": "ready"}` |
+| `/api/v1/health/metrics` | `GET` | Prometheus-compatible metrics endpoint | `200 OK`, text/plain metrics |
+
+### Health Probe Verification:
 ```bash
-docker compose exec backend alembic upgrade head
-```
-
-Expected output:
-```
-INFO  [alembic.runtime.migration] Running upgrade -> <hash>, initial migration
-INFO  [alembic.runtime.migration] Running upgrade -> <hash>, add chat tables
-...
-```
-
-Verify the database schema was created:
-```bash
-docker compose exec postgres psql -U raguser -d ragdb -c "\dt"
+curl -f http://localhost:8000/api/v1/health
+curl -f http://localhost:8000/api/v1/health/ready
 ```
 
 ---
 
-## 5. Nginx Reverse Proxy
+## 10. Production Security Notes
 
-For production, route both frontend and backend through Nginx on standard ports.
-
-### Sample `/etc/nginx/sites-available/rag`:
-
-```nginx
-upstream backend {
-    server localhost:8000;
-}
-
-upstream frontend {
-    server localhost:3000;
-}
-
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    # Redirect all HTTP to HTTPS
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
-
-    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-
-    # Security headers
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options DENY always;
-    add_header X-Content-Type-Options nosniff always;
-
-    # Backend API
-    location /api/ {
-        proxy_pass http://backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # SSE streaming — disable buffering for /chat/stream endpoints
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 300s;
-    }
-
-    # Backend docs
-    location ~ ^/(docs|redoc|openapi.json) {
-        proxy_pass http://backend;
-        proxy_set_header Host $host;
-    }
-
-    # Frontend
-    location / {
-        proxy_pass http://frontend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    # Increase upload size limit for document uploads
-    client_max_body_size 50M;
-}
-```
-
-Enable and reload:
-```bash
-sudo ln -s /etc/nginx/sites-available/rag /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
-```
+1. **Secret Key Hardening**:
+   - `SECRET_KEY` must be at least 32 characters in length.
+   - Pydantic startup validator automatically rejects common placeholder strings (`change-me`, `changeme`, `placeholder`, `secret`, `default`).
+   - If an insecure key is detected with `ENVIRONMENT=production`, the application immediately raises `ValueError` and halts execution.
+2. **CORS Isolation**:
+   - Wildcard `ALLOWED_ORIGINS=*` is strictly disallowed in production when `ALLOW_CREDENTIALS=true`.
+   - Specify only verified production domains to prevent cross-origin credential exfiltration.
+3. **Container Privileges**:
+   - Docker containers run under dedicated non-root users (`appuser:appgroup` UID 1000 in backend; `nextjs:nodejs` UID 1001 in frontend).
+4. **LLM Chain-of-Thought Isolation**:
+   - The ReAct agent service filters internal reasoning blocks (`<reasoning>...</reasoning>`) prior to persisting or transmitting answers.
 
 ---
 
-## 6. SSL/TLS Configuration
+## 11. Troubleshooting & Runbook
 
-Using Let's Encrypt (free):
+### Issue: Gemini HTTP 429 (`RESOURCE_EXHAUSTED`)
+- **Symptom**: `LLM Streaming generation failed: Gemini stream failed with HTTP 429: Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.5-flash`.
+- **Cause**: Google AI Studio free tier enforces a strict limit of 20 requests per project per day for `gemini-3.5-flash`.
+- **Remediation**:
+  1. Link a billing account in Google Cloud Console / Google AI Studio to enable Pay-As-You-Go pricing.
+  2. Request a quota increase for `generate_content_requests` under the Google Cloud Quotas dashboard.
 
-```bash
-# Install certbot
-sudo apt install certbot python3-certbot-nginx
+### Issue: Document Upload Stays in `PENDING`
+- **Check**: Verify Celery worker is active and connected to the same Redis instance:
+  ```bash
+  celery -A app.tasks.celery_app inspect ping
+  ```
+- **Check**: Verify document storage directory permissions:
+  ```bash
+  ls -la backend/storage/uploads/
+  ```
 
-# Obtain certificate
-sudo certbot --nginx -d your-domain.com
+### Issue: PostgreSQL pgvector Cosine Distance Operator `<=>` Error
+- **Symptom**: `operator does not exist: vector <=> unknown`.
+- **Remediation**: Ensure the `pgvector` extension is active in the target database:
+  ```sql
+  CREATE EXTENSION IF NOT EXISTS vector;
+  ```
 
-# Auto-renewal (already configured by certbot)
-sudo certbot renew --dry-run
-```
-
----
-
-## 7. Health Verification
-
-After deployment, verify all services:
-
-```bash
-# Backend health
-curl https://your-domain.com/api/v1/health
-
-# Expected response:
-# {"status": "healthy", "database": "connected", "version": "0.2.0"}
-
-# Frontend
-curl -I https://your-domain.com
-# HTTP/2 200
-
-# Celery worker
-docker compose exec celery_worker celery -A app.tasks.celery_app inspect ping
-```
-
----
-
-## 8. Log Management
-
-### Configure JSON Logging
-
-In production `.env`:
-```bash
-LOG_FORMAT=json
-LOG_LEVEL=INFO
-LOG_FILE_PATH=/app/logs/app.log
-```
-
-Logs are written to the `backend_logs` Docker volume mounted at `/app/logs`.
-
-### View Log Files
-
-```bash
-# Access log directory
-docker compose exec backend ls /app/logs/
-
-# Tail live logs
-docker compose exec backend tail -f /app/logs/app.log
-```
-
-### Log Rotation (host-level)
-
-```bash
-# /etc/logrotate.d/rag-backend
-/var/lib/docker/volumes/rag_backend_logs/_data/*.log {
-    daily
-    rotate 14
-    compress
-    delaycompress
-    missingok
-    notifempty
-}
-```
-
----
-
-## 9. Backup & Restore
-
-### Database Backup
-
-```bash
-# Manual backup
-bash scripts/backup.sh
-
-# Automated daily backup via cron:
-0 2 * * * /path/to/scripts/backup.sh >> /var/log/rag-backup.log 2>&1
-```
-
-The script creates a gzip-compressed SQL dump in `./backups/`.
-
-### Database Restore
-
-```bash
-bash scripts/restore.sh backups/ragdb_2026-07-19.sql.gz
-```
-
-### Volume Backup (uploaded documents)
-
-```bash
-# Backup storage volume
-docker run --rm \
-  -v rag_storage:/source \
-  -v $(pwd)/backups:/backup \
-  alpine tar czf /backup/storage_$(date +%Y%m%d).tar.gz -C /source .
-```
-
----
-
-## 10. Scaling Workers
-
-### Scale Celery Workers Horizontally
-
-```bash
-# Run 3 Celery worker instances
-docker compose up -d --scale celery_worker=3
-```
-
-### Scale Backend Workers (Uvicorn)
-
-In `docker-compose.yml`, update the backend environment:
-```yaml
-WORKERS: "8"  # Recommended: 2 × CPU cores
-```
-
-Then rebuild:
-```bash
-docker compose up --build -d backend
-```
-
----
-
-## 11. Environment Reference
-
-| Variable | Production Value |
-|---|---|
-| `ENVIRONMENT` | `production` |
-| `DEBUG` | `false` |
-| `LOG_FORMAT` | `json` |
-| `LOG_LEVEL` | `INFO` |
-| `WORKERS` | `4` (or 2× CPU count) |
-| `ALLOWED_ORIGINS` | Your domain (e.g. `https://rag.mycompany.com`) |
-| `DOCS_URL` | `""` (disable in production) or leave as `/docs` |
-| `DATABASE_URL` | `postgresql+asyncpg://raguser:<password>@postgres:5432/ragdb` |
-| `REDIS_URL` | `redis://redis:6379/0` |
-| `SECRET_KEY` | Strong 32-byte hex string — never a placeholder |
-
----
-
-## 12. Common Issues
-
-### Container Fails to Start
-
-```bash
-# Check detailed logs
-docker compose logs backend --tail=50
-```
-
-Common causes:
-- Missing `GEMINI_API_KEY` → set in `backend/.env`
-- Database not ready → wait for `rag_postgres` to be `healthy`
-- Port conflict → change host port in `docker-compose.yml`
-
-### Document Stays in QUEUED State
-
-```bash
-# Check Celery worker logs
-docker compose logs celery_worker --tail=50
-```
-
-Common causes:
-- Redis not reachable → verify `rag_redis` is running
-- Celery worker not started → `docker compose up -d celery_worker`
-
-### pgvector Extension Missing
-
-```bash
-docker compose exec postgres psql -U raguser -d ragdb -c "CREATE EXTENSION IF NOT EXISTS vector;"
-```
-
-### Alembic Migration Fails
-
-```bash
-# Check current revision
-docker compose exec backend alembic current
-
-# Show history
-docker compose exec backend alembic history
-
-# Manually apply missing migration
-docker compose exec backend alembic upgrade head
-```
-
-### Reset Everything (Development Only)
-
-```bash
-# Stop all containers and remove all data volumes
-docker compose down -v
-
-# Rebuild and restart fresh
-docker compose up --build -d
-docker compose exec backend alembic upgrade head
-```
+### Issue: Next.js Frontend Cannot Connect to Backend
+- **Check**: Verify `NEXT_PUBLIC_API_URL` baked into client bundles matches the public reverse proxy URL (e.g. `https://rag.yourcompany.com/api/v1`).
+- **Check**: Verify browser console does not show CORS rejection errors.

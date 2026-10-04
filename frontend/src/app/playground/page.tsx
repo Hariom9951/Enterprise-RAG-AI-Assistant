@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ragApi,
@@ -8,23 +8,18 @@ import {
   DocumentResponse,
   RAGQueryResponse,
   RAGStatisticsResponse,
-  RAGModelItem,
   SearchFilters,
 } from "@/lib/api";
 import {
   Loader2,
   Send,
   Sliders,
-  BarChart3,
   AlertCircle,
   BookOpen,
   Clock,
   Hash,
   Cpu,
-  Sparkles,
   ExternalLink,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { renderMarkdown } from "@/lib/markdown";
@@ -43,7 +38,6 @@ export default function RAGPlaygroundPage() {
   // Filtering criteria
   const [allDocs, setAllDocs] = useState<DocumentResponse[]>([]);
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
-  const [languages, setLanguages] = useState<string[]>([]);
   const [metaKey, setMetaKey] = useState("");
   const [metaVal, setMetaVal] = useState("");
   const [metaFilters, setMetaFilters] = useState<Record<string, string>>({});
@@ -51,15 +45,13 @@ export default function RAGPlaygroundPage() {
   // Operational states
   const [response, setResponse] = useState<RAGQueryResponse | null>(null);
   const [stats, setStats] = useState<RAGStatisticsResponse | null>(null);
-  const [models, setModels] = useState<RAGModelItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
 
-  // References for cited highlighting
-  const chunkRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  // Highlighting state for source jump
   const [highlightedCitation, setHighlightedCitation] = useState<number | null>(null);
 
   // Load models, documents, and user statistics on startup
@@ -68,8 +60,7 @@ export default function RAGPlaygroundPage() {
       const docList = await documentsApi.list({ limit: 100 });
       setAllDocs(docList);
       
-      const modelList = await ragApi.getModels();
-      setModels(modelList);
+      await ragApi.getModels();
       
       const statsObj = await ragApi.getStatistics();
       setStats(statsObj);
@@ -82,21 +73,21 @@ export default function RAGPlaygroundPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      loadInitialData();
+      void loadInitialData();
     }, 0);
     return () => clearTimeout(timer);
   }, [loadInitialData]);
 
   // Loading animation lifecycle steps
   useEffect(() => {
-    if (!loading) {
-      setLoadingStep(0);
-      return;
-    }
+    if (!loading) return;
     const interval = setInterval(() => {
       setLoadingStep((prev) => (prev < 3 ? prev + 1 : prev));
     }, 1200);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      setLoadingStep(0);
+    };
   }, [loading]);
 
   const handleQuery = async (e: React.FormEvent) => {
@@ -111,7 +102,6 @@ export default function RAGPlaygroundPage() {
     try {
       const filtersObj: SearchFilters = {};
       if (selectedDocs.length > 0) filtersObj.document_ids = selectedDocs;
-      if (languages.length > 0) filtersObj.languages = languages;
       if (Object.keys(metaFilters).length > 0) filtersObj.metadata = metaFilters;
 
       const payload = {
@@ -146,41 +136,14 @@ export default function RAGPlaygroundPage() {
   };
 
   // Scroll to source chunk element and highlight it
-  const handleScrollToCitation = (index: number) => {
-    const el = chunkRefs.current[index];
+  const handleScrollToCitation = useCallback((index: number) => {
+    const el = document.getElementById(`citation-source-${index}`);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       setHighlightedCitation(index);
       setTimeout(() => setHighlightedCitation(null), 3000);
     }
-  };
-
-  // Formats text, wrapping raw [1] citation tags in interactive rounded badges
-  const renderFormattedAnswer = (text: string) => {
-    if (!text) return null;
-    const parts = text.split(/(\[\d+\])/g);
-    return (
-      <p className="text-sm leading-relaxed text-slate-200">
-        {parts.map((part, index) => {
-          const match = part.match(/^\[(\d+)\]$/);
-          if (match) {
-            const citeIdx = parseInt(match[1]);
-            return (
-              <span
-                key={index}
-                onClick={() => handleScrollToCitation(citeIdx)}
-                className="mx-0.5 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-mono font-bold bg-indigo-500/25 hover:bg-indigo-500/40 text-indigo-300 border border-indigo-500/30 rounded cursor-pointer transition-colors select-none"
-                title={`Jump to Source Chunk [${citeIdx}]`}
-              >
-                [{citeIdx}]
-              </span>
-            );
-          }
-          return part;
-        })}
-      </p>
-    );
-  };
+  }, []);
 
   const getConfidenceLevel = (score: number) => {
     if (score >= 0.75) return { text: "High Confidence", color: "text-emerald-400 bg-emerald-950/40 border-emerald-800/40" };
@@ -264,13 +227,11 @@ export default function RAGPlaygroundPage() {
                     value={provider}
                     onChange={(e) => {
                       setProvider(e.target.value);
-                      setModel(e.target.value === "gemini" ? "gemini-3.5-flash" : e.target.value === "openai" ? "gpt-4o-mini" : "llama3");
+                      setModel("gemini-2.5-flash");
                     }}
                     className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-slate-200 outline-none cursor-pointer hover:border-slate-700 font-medium"
                   >
                     <option value="gemini">Google Gemini</option>
-                    <option value="openai">OpenAI GPT</option>
-                    <option value="ollama">Local Ollama</option>
                   </select>
                 </label>
 
@@ -281,24 +242,9 @@ export default function RAGPlaygroundPage() {
                     onChange={(e) => setModel(e.target.value)}
                     className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-slate-200 outline-none cursor-pointer hover:border-slate-700 font-medium"
                   >
-                    {provider === "gemini" && (
-                      <>
-                        <option value="gemini-3.5-flash">gemini-3.5-flash (default)</option>
-                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                      </>
-                    )}
-                    {provider === "openai" && (
-                      <>
-                        <option value="gpt-4o-mini">gpt-4o-mini (default)</option>
-                        <option value="gpt-4o">gpt-4o</option>
-                      </>
-                    )}
-                    {provider === "ollama" && (
-                      <>
-                        <option value="llama3">llama3</option>
-                        <option value="mistral">mistral</option>
-                      </>
-                    )}
+                    <option value="gemini-2.5-flash">gemini-2.5-flash (default)</option>
+                    <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                    <option value="gemini-2.0-flash">gemini-2.0-flash</option>
                   </select>
                 </label>
 
@@ -474,7 +420,7 @@ export default function RAGPlaygroundPage() {
                       {response.citations.map((item) => (
                         <div
                           key={item.citation_index}
-                          ref={(el) => { chunkRefs.current[item.citation_index] = el; }}
+                          id={`citation-source-${item.citation_index}`}
                           className={`bg-slate-950/60 border rounded-xl p-4 space-y-3 transition-all duration-300 ${
                             highlightedCitation === item.citation_index
                               ? "border-indigo-500 bg-indigo-950/10 shadow-lg shadow-indigo-500/5 scale-[1.01]"

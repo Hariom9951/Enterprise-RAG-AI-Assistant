@@ -119,22 +119,11 @@ async def document_scoped_rag_query(
 async def list_models(
     current_user: User = Depends(get_current_active_user),
 ) -> list[RAGModelItem]:
-    default_provider = settings.llm_provider.lower()
     return [
         RAGModelItem(
             provider="GEMINI",
             model_name=settings.gemini_model,
-            is_default=(default_provider == "gemini"),
-        ),
-        RAGModelItem(
-            provider="OPENAI",
-            model_name="gpt-4o-mini",
-            is_default=(default_provider == "openai"),
-        ),
-        RAGModelItem(
-            provider="OLLAMA",
-            model_name="llama3",
-            is_default=(default_provider == "ollama"),
+            is_default=True,
         ),
     ]
 

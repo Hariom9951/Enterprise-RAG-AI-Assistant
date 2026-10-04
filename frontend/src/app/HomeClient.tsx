@@ -11,10 +11,7 @@ import {
   Cpu,
   Settings,
   LogOut,
-  ArrowRight,
-  Shield,
-  Activity,
-  CheckCircle
+  ArrowRight
 } from "lucide-react";
 import { isAuthenticated, clearTokens } from "@/lib/auth";
 
@@ -86,11 +83,8 @@ export default function HomeClient() {
   const [backendVersion, setBackendVersion] = useState<string>("");
 
   useEffect(() => {
-    // Check initial auth state
-    setAuthStatus(isAuthenticated());
-
-    // Live Health Polling
-    const checkHealth = async () => {
+    const init = async () => {
+      setAuthStatus(isAuthenticated());
       try {
         const res = await fetch("http://localhost:8000/api/v1/health");
         if (res.ok) {
@@ -100,11 +94,11 @@ export default function HomeClient() {
         } else {
           setHealthStatus("offline");
         }
-      } catch (err) {
+      } catch {
         setHealthStatus("offline");
       }
     };
-    checkHealth();
+    void init();
   }, []);
 
   const handleLogout = () => {
@@ -206,7 +200,7 @@ export default function HomeClient() {
         <div className="flex items-center gap-6">
           {authStatus ? (
             <>
-              <Link href="/dashboard" className="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1.5">
+              <Link href="/chat" className="text-sm font-semibold text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5">
                 Go to Workspace <ArrowRight size={14} />
               </Link>
               <button

@@ -6,93 +6,98 @@ import {
   chatApi,
   ragApi,
   dashboardApi,
-  ChatSessionResponse,
+  userApi,
   ChatMessageResponse,
   RAGModelItem,
-  CitationItem
+  CitationItem,
+  UserResponse,
+  RAGTokenUsageInfo,
+  RAGLatencyInfo
 } from "@/lib/api";
 import {
   Send,
-  Plus,
-  Trash2,
-  Cpu,
-  Sliders,
   MessageSquare,
   Loader2,
   AlertCircle,
-  Clock,
   Zap,
-  DollarSign,
-  BookOpen,
+  Copy,
+  ThumbsUp,
+  ThumbsDown,
+  Check,
+  Globe,
+  Sparkles,
+  Paperclip,
+  FileText,
   ChevronDown,
-  ChevronUp,
-  X
+  ChevronUp
 } from "lucide-react";
-import Navigation from "@/components/Navigation";
+import AppSidebar from "@/components/layout/AppSidebar";
+import AppTopbar from "@/components/layout/AppTopbar";
+import AppRightPanel from "@/components/layout/AppRightPanel";
 import { renderMarkdown } from "@/lib/markdown";
 
 export default function ChatPage() {
-  const [sessions, setSessions] = useState<ChatSessionResponse[]>([]);
+  const [user, setUser] = useState<UserResponse | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageResponse[]>([]);
   const [inputText, setInputText] = useState("");
-  const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasDocuments, setHasDocuments] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // Quick settings drawer toggle & options state
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  // Quick settings & model state
   const [models, setModels] = useState<RAGModelItem[]>([]);
-  const [provider, setProvider] = useState("gemini");
   const [selectedModel, setSelectedModel] = useState("gemini-3.5-flash");
   const [temperature, setTemperature] = useState(0.2);
   const [topK, setTopK] = useState(5);
   const [threshold, setThreshold] = useState(0.0);
   const [useReranker, setUseReranker] = useState(true);
   const [maxTokens, setMaxTokens] = useState(1000);
+  const [deepResearchActive, setDeepResearchActive] = useState(false);
 
   // Observability details toggles
   const [expandedTraceId, setExpandedTraceId] = useState<string | null>(null);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [activeCitations, setActiveCitations] = useState<CitationItem[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const citationRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Fetch all chat sessions
   const fetchSessions = useCallback(async () => {
-    setLoadingSessions(true);
     try {
       const list = await chatApi.listSessions();
-      setSessions(list);
       if (list.length > 0 && !activeSessionId) {
         setActiveSessionId(list[0].id);
       }
     } catch (err) {
       console.error("Failed to load chat sessions:", err);
       setError("Failed to load conversation history.");
-    } finally {
-      setLoadingSessions(false);
     }
   }, [activeSessionId]);
 
-  // Load configurations and check corpus size
+  // Load user profile & initial configurations
   useEffect(() => {
+    let isMounted = true;
     const loadInitData = async () => {
       try {
-        const [modelList, dashboardStats] = await Promise.all([
-          ragApi.getModels(),
-          dashboardApi.getStatistics()
+        const [profile, modelList, dashboardStats] = await Promise.all([
+          userApi.me().catch(() => null),
+          ragApi.getModels().catch(() => []),
+          dashboardApi.getStatistics().catch(() => ({ total_documents: 1 }))
         ]);
+
+        if (!isMounted) return;
+        if (profile) setUser(profile);
         setModels(modelList);
         setHasDocuments(dashboardStats.total_documents > 0);
 
-        // Load localStorage preferences
+        // Load saved preferences from localStorage
         const savedSettings = localStorage.getItem("rag_settings");
         if (savedSettings) {
           const parsed = JSON.parse(savedSettings);
-          setProvider(parsed.provider || "gemini");
           setSelectedModel(parsed.model || "gemini-3.5-flash");
           setTemperature(parsed.temperature ?? 0.2);
           setTopK(parsed.topK ?? 5);
@@ -100,42 +105,22 @@ export default function ChatPage() {
           setUseReranker(parsed.useReranker ?? true);
           setMaxTokens(parsed.maxTokens ?? 1000);
         } else if (modelList.length > 0) {
-          const geminiModels = modelList.filter((m) => m.provider === "gemini");
-          if (geminiModels.length > 0) {
-            setProvider("gemini");
-            setSelectedModel(geminiModels[0].model_name);
-          } else {
-            setProvider(modelList[0].provider);
-            setSelectedModel(modelList[0].model_name);
-          }
+          setSelectedModel(modelList[0].model_name);
         }
       } catch (err) {
         console.error("Failed to load initial configurations:", err);
       }
     };
-    loadInitData();
-    fetchSessions();
-  }, [fetchSessions]);
-
-  // Save configurations helper
-  const saveQuickSettings = (updated: Record<string, any>) => {
-    const current = {
-      provider,
-      model: selectedModel,
-      temperature,
-      topK,
-      threshold,
-      useReranker,
-      maxTokens,
-      ...updated
+    void loadInitData();
+    void fetchSessions();
+    return () => {
+      isMounted = false;
     };
-    localStorage.setItem("rag_settings", JSON.stringify(current));
-  };
+  }, [fetchSessions]);
 
   // Load messages when active session changes
   useEffect(() => {
     if (!activeSessionId) {
-      setMessages([]);
       return;
     }
 
@@ -144,7 +129,16 @@ export default function ChatPage() {
       setError(null);
       try {
         const sessionDetail = await chatApi.getSession(activeSessionId);
-        setMessages(sessionDetail.messages || []);
+        const msgs = sessionDetail.messages || [];
+        setMessages(msgs);
+
+        // Find latest citations to populate right panel
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].citations && msgs[i].citations!.length > 0) {
+            setActiveCitations(msgs[i].citations!);
+            break;
+          }
+        }
       } catch (err) {
         console.error("Failed to load session messages:", err);
         setError("Could not load messages for this thread.");
@@ -156,79 +150,77 @@ export default function ChatPage() {
     loadMessages();
   }, [activeSessionId]);
 
-  // Scroll to bottom
+  // Auto-scroll to bottom on new message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, sendingMessage]);
 
   // Create new session
   const handleCreateSession = async () => {
     try {
       setError(null);
       const newSession = await chatApi.createSession("New Conversation");
-      setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(newSession.id);
+      setMessages([]);
+      setActiveCitations([]);
     } catch (err) {
       console.error("Failed to create chat session:", err);
       setError("Failed to create new conversation.");
     }
   };
 
-  // Delete session
-  const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    try {
-      setError(null);
-      await chatApi.deleteSession(id);
-      setSessions((prev) => prev.filter((s) => s.id !== id));
-      if (activeSessionId === id) {
-        setActiveSessionId(null);
-        setMessages([]);
-      }
-    } catch (err) {
-      console.error("Failed to delete session:", err);
-      setError("Failed to delete conversation.");
-    }
+
+  // Copy message text helper
+  const handleCopyMessage = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMsgId(id);
+    setTimeout(() => setCopiedMsgId(null), 2000);
   };
 
-  // Click citation to scroll down to item reference
+  // Scroll to citation reference in message
   const handleScrollToCitation = (idx: number) => {
-    const targetKey = `citation-${idx}`;
-    const el = citationRefs.current[targetKey];
+    const el = document.getElementById(`inline-citation-${idx}`);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("border-indigo-500", "bg-indigo-950/20", "scale-[1.02]");
+      el.classList.add("ring-2", "ring-blue-500", "bg-blue-50");
       setTimeout(() => {
-        el.classList.remove("border-indigo-500", "bg-indigo-950/20", "scale-[1.02]");
+        el.classList.remove("ring-2", "ring-blue-500", "bg-blue-50");
       }, 3000);
     }
   };
 
-  // Cost calculator
-  const calculateCost = (prompt: number, completion: number, prov: string): string => {
-    const p = prov.toLowerCase();
-    let promptRate = 0.0;
-    let completionRate = 0.0;
-
-    if (p === "gemini") {
-      promptRate = 0.075 / 1000000;
-      completionRate = 0.3 / 1000000;
-    } else if (p === "openai") {
-      promptRate = 0.15 / 1000000;
-      completionRate = 0.6 / 1000000;
+  // Format time (e.g. "10:24 AM")
+  const formatTime = (isoString?: string) => {
+    if (!isoString) return "";
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
     }
-
-    const cost = prompt * promptRate + completion * completionRate;
-    return cost === 0 ? "$0.0000" : `$${cost.toFixed(6)}`;
   };
 
   // Send message stream
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim() || !activeSessionId || sendingMessage) return;
+  const executeSendMessage = async (textToSend: string) => {
+    if (!textToSend.trim() || sendingMessage) return;
 
-    const userQuestion = inputText.trim();
+    let targetSessionId = activeSessionId;
+    // Auto-create session if none active
+    if (!targetSessionId) {
+      try {
+        const newSession = await chatApi.createSession(
+          textToSend.slice(0, 30) + (textToSend.length > 30 ? "..." : "")
+        );
+        setActiveSessionId(newSession.id);
+        targetSessionId = newSession.id;
+      } catch (err) {
+        console.error("Failed to create session on message send:", err);
+        setError("Could not initialize session.");
+        return;
+      }
+    }
+
+    const userQuestion = textToSend.trim();
     setInputText("");
     setError(null);
     setSendingMessage(true);
@@ -251,16 +243,19 @@ export default function ChatPage() {
     };
     setMessages((prev) => [...prev, assistantMsgPlaceholder]);
 
+    let assistantText = "";
+    let parsedCitations: CitationItem[] = [];
+
     try {
-      const response = await chatApi.sendMessageStream(activeSessionId, {
+      const response = await chatApi.sendMessageStream(targetSessionId, {
         question: userQuestion,
-        provider,
+        provider: "gemini",
         model: selectedModel,
         temperature,
         max_tokens: maxTokens,
-        use_reranker: useReranker,
+        use_reranker: useReranker || deepResearchActive,
         threshold,
-        top_k: topK
+        top_k: deepResearchActive ? Math.max(topK, 8) : topK
       });
 
       if (!response.ok) {
@@ -273,10 +268,8 @@ export default function ChatPage() {
       }
 
       const decoder = new TextDecoder("utf-8");
-      let assistantText = "";
-      let parsedCitations: CitationItem[] = [];
-      let tokenUsage: any = null;
-      let latencyLog: any = null;
+      let tokenUsage: RAGTokenUsageInfo | undefined = undefined;
+      let latencyLog: RAGLatencyInfo | undefined = undefined;
       let buffer = "";
 
       while (true) {
@@ -305,6 +298,7 @@ export default function ChatPage() {
           try {
             if (event === "citations") {
               parsedCitations = JSON.parse(data);
+              setActiveCitations(parsedCitations);
             } else if (event === "token") {
               const token = JSON.parse(data);
               assistantText += token;
@@ -312,6 +306,23 @@ export default function ChatPage() {
               const donePayload = JSON.parse(data);
               tokenUsage = donePayload.tokens;
               latencyLog = donePayload.latency;
+            } else if (event === "error") {
+              const cleanErr = data.replace(/^LLM Streaming generation failed:\s*/i, "").trim();
+              if (
+                cleanErr.includes("Gemini usage limit reached") ||
+                cleanErr.includes("quota") ||
+                cleanErr.includes("RESOURCE_EXHAUSTED") ||
+                cleanErr.includes("429")
+              ) {
+                assistantText =
+                  "Gemini usage limit reached. Your retrieved sources are available, but a new AI response cannot be generated right now. Please try again after the quota resets.";
+                setError(
+                  "Gemini usage limit reached. Your retrieved sources are available, but a new AI response cannot be generated right now. Please try again after the quota resets."
+                );
+              } else {
+                assistantText = `⚠️ **Gemini Generation Error:** ${cleanErr}`;
+                setError(cleanErr);
+              }
             }
           } catch (err) {
             console.warn("Failed to parse SSE line data:", err);
@@ -324,8 +335,8 @@ export default function ChatPage() {
                     ...msg,
                     content: assistantText,
                     citations: parsedCitations,
-                    tokens: tokenUsage || undefined,
-                    latency: latencyLog || undefined
+                    tokens: tokenUsage,
+                    latency: latencyLog
                   }
                 : msg
             )
@@ -333,340 +344,349 @@ export default function ChatPage() {
         }
       }
 
-      // Re-fetch sessions list to update titles in sidebar
-      const list = await chatApi.listSessions();
-      setSessions(list);
-    } catch (err: any) {
+      // Refresh sessions list in background
+      await chatApi.listSessions().catch(() => []);
+    } catch (err: unknown) {
       console.error("Failed to stream answer:", err);
-      setError("Connection closed prematurely. Try modifying temperature parameters.");
-      setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
+      const isQuota =
+        assistantText.includes("Gemini usage limit reached") ||
+        (err instanceof Error && err.message.includes("429"));
+      if (isQuota) {
+        setError(
+          "Gemini usage limit reached. Your retrieved sources are available, but a new AI response cannot be generated right now. Please try again after the quota resets."
+        );
+      } else {
+        setError(
+          "Response interrupted. Please check your Gemini API key and backend connectivity."
+        );
+      }
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id === assistantMsgId) {
+            const preservedContent =
+              m.content ||
+              assistantText ||
+              "Gemini usage limit reached. Your retrieved sources are available, but a new AI response cannot be generated right now. Please try again after the quota resets.";
+            return {
+              ...m,
+              content: preservedContent,
+              citations: m.citations && m.citations.length > 0 ? m.citations : parsedCitations,
+            };
+          }
+          return m;
+        })
+      );
     } finally {
       setSendingMessage(false);
     }
   };
 
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    executeSendMessage(inputText);
+  };
+
+  // User initials
+  const userInitials = user?.full_name
+    ? user.full_name
+        .split(" ")
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : "HY";
+
+  const firstName = user?.full_name ? user.full_name.split(" ")[0] : "Hariom";
+
+  // Starter feature cards
+  const starterCards = [
+    {
+      title: "Ask Questions",
+      description: "Get accurate answers from your documents",
+      prompt: "Summarize the key findings from the project documentation and provide the main recommendations.",
+      icon: (
+        <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+          <MessageSquare size={16} />
+        </div>
+      )
+    },
+    {
+      title: "Analyze Documents",
+      description: "Summarize and extract key insights",
+      prompt: "Extract the core requirements, architecture decisions, and potential risks mentioned in the documents.",
+      icon: (
+        <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+          <FileText size={16} />
+        </div>
+      )
+    },
+    {
+      title: "Compare Information",
+      description: "Find relationships across multiple sources",
+      prompt: "Compare the performance metrics, latency benchmarks, and retrieval strategies across the documentation.",
+      icon: (
+        <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
+          <Sparkles size={16} />
+        </div>
+      )
+    },
+    {
+      title: "Generate Reports",
+      description: "Create structured reports with citations",
+      prompt: "Generate an executive summary report covering system capabilities, security guidelines, and next steps.",
+      icon: (
+        <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
+          <Zap size={16} />
+        </div>
+      )
+    }
+  ];
+
   return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-100 font-sans pl-0 md:pl-64">
-      {/* Sidebar Navigation */}
-      <Navigation />
+    <div className="flex h-screen bg-[#F8FAFC] text-slate-800 overflow-hidden font-sans">
+      {/* ── Left Sidebar (Dark Navy) ─────────────────────────────── */}
+      <AppSidebar
+        onNewChat={handleCreateSession}
+        isMobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
 
-      {/* Main Workspace Layout */}
-      <div className="flex-1 flex flex-row h-screen overflow-hidden relative z-10">
-        
-        {/* Chat History Panel */}
-        <aside className="w-80 border-r border-slate-900 bg-slate-950 flex flex-col h-full shrink-0">
-          <div className="p-4 border-b border-slate-900 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <MessageSquare size={16} className="text-indigo-400" />
-              Conversations
-            </h2>
-            <button
-              onClick={handleCreateSession}
-              className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 transition-all cursor-pointer"
-              title="New thread"
-            >
-              <Plus size={15} />
-            </button>
-          </div>
+      {/* ── Main Layout (Center + Right Panel) ───────────────────── */}
+      <div className="flex-1 flex flex-col md:pl-64 h-full overflow-hidden">
+        {/* Topbar */}
+        <AppTopbar
+          onToggleMobileSidebar={() => setMobileSidebarOpen(true)}
+          onSearchSubmit={(q) => executeSendMessage(q)}
+        />
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-1">
-            {loadingSessions ? (
-              <div className="flex items-center justify-center py-8 text-slate-500 text-xs gap-2">
-                <Loader2 className="animate-spin text-indigo-500" size={14} />
-                <span>Loading threads…</span>
-              </div>
-            ) : sessions.length === 0 ? (
-              <div className="text-center py-12 text-slate-500 text-xs">
-                No conversations yet.
-              </div>
-            ) : (
-              sessions.map((s) => (
-                <div
-                  key={s.id}
-                  onClick={() => setActiveSessionId(s.id)}
-                  className={`group flex items-center justify-between px-3.5 py-3 rounded-xl cursor-pointer border text-xs font-semibold transition-all ${
-                    activeSessionId === s.id
-                      ? "bg-slate-900/60 border-slate-800 text-white"
-                      : "bg-transparent border-transparent text-slate-400 hover:bg-slate-900/30 hover:text-slate-300"
-                  }`}
-                >
-                  <div className="truncate pr-2 font-medium flex-1">
-                    {s.title}
-                  </div>
-                  <button
-                    onClick={(e) => handleDeleteSession(e, s.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/10 border border-transparent hover:border-red-500/25 text-slate-500 hover:text-red-400 rounded transition-all cursor-pointer"
-                    title="Delete thread"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </aside>
-
-        {/* Chat Thread Panel */}
-        <main className="flex-1 flex flex-col h-full bg-slate-950/40 relative">
+        {/* Workspace Body */}
+        <div className="flex-1 flex flex-row overflow-hidden relative">
           
-          {/* Top Config Bar */}
-          <header className="px-6 py-4 border-b border-slate-900 flex items-center justify-between bg-slate-950/60 backdrop-blur-md">
-            <div>
-              <h1 className="text-base font-bold text-white">RAG Chat Workspace</h1>
-              <p className="text-[10px] text-slate-500 mt-0.5">Grounded SaaS retrieval chat with source citations.</p>
-            </div>
+          {/* ── Center Chat Stream & Composer ────────────────────── */}
+          <main className="flex-1 flex flex-col h-full bg-[#F8FAFC] overflow-hidden relative">
             
-            {/* Quick parameter display toggles */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
-                <Cpu size={13} className="text-indigo-400" />
-                <span className="font-mono text-[10px]">
-                  {selectedModel} ({provider})
-                </span>
-              </div>
-              <button
-                onClick={() => setIsConfigOpen(!isConfigOpen)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 text-xs text-slate-300 transition-colors cursor-pointer"
-              >
-                <Sliders size={13} className="text-indigo-400" />
-                <span>Configure</span>
-              </button>
-            </div>
-          </header>
-
-          {/* Quick Settings Dropdown Overlay */}
-          {isConfigOpen && (
-            <div className="absolute top-16 right-6 w-80 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl z-20 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-                <h3 className="text-xs font-bold text-white flex items-center gap-2">
-                  <Sliders size={14} className="text-indigo-400" />
-                  Grounded Parameters
-                </h3>
-                <button
-                  onClick={() => setIsConfigOpen(false)}
-                  className="text-slate-400 hover:text-white"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-
-              <div className="space-y-3.5 text-xs">
-                <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">
-                    LLM Provider
-                  </label>
-                  <select
-                    value={provider}
-                    onChange={(e) => {
-                      const p = e.target.value;
-                      setProvider(p);
-                      const filtered = models.filter((m) => m.provider === p);
-                      if (filtered.length > 0) {
-                        setSelectedModel(filtered[0].model_name);
-                        saveQuickSettings({ provider: p, model: filtered[0].model_name });
-                      } else {
-                        saveQuickSettings({ provider: p });
-                      }
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none"
-                  >
-                    <option value="gemini">Google Gemini</option>
-                    <option value="openai">OpenAI GPT</option>
-                    <option value="ollama">Ollama (Local)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">
-                    Model selection
-                  </label>
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => {
-                      setSelectedModel(e.target.value);
-                      saveQuickSettings({ model: e.target.value });
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none"
-                  >
-                    {models
-                      .filter((m) => m.provider === provider)
-                      .map((m) => (
-                        <option key={m.model_name} value={m.model_name}>
-                          {m.model_name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
+            {/* Messages Scroll Area */}
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto px-4 md:px-8 py-6 space-y-6 scrollbar-thin max-w-4xl w-full mx-auto"
+            >
+              {/* No Documents Banner */}
+              {!hasDocuments && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-start gap-3 text-xs text-amber-800 shadow-2xs">
+                  <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>
-                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-                      Temperature ({temperature})
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      value={temperature}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        setTemperature(v);
-                        saveQuickSettings({ temperature: v });
-                      }}
-                      className="w-full accent-indigo-500 cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-                      Top Chunks ({topK})
-                    </label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="15"
-                      step="1"
-                      value={topK}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        setTopK(v);
-                        saveQuickSettings({ topK: v });
-                      }}
-                      className="w-full accent-indigo-500 cursor-pointer"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Messages Logs Area */}
-          <div
-            ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto px-6 py-6 space-y-6 scrollbar-thin"
-          >
-            {!hasDocuments && (
-              <div className="bg-amber-950/20 border border-amber-900/40 rounded-xl p-4 flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-semibold text-white">No documents uploaded</p>
-                  <p className="text-[11px] text-amber-300 mt-0.5">
-                    Grounded citations require context. Upload PDF/text files in the{" "}
-                    <Link href="/documents" className="underline font-bold text-white">
-                      Documents Workspace
-                    </Link>{" "}
-                    first.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="bg-rose-950/20 border border-rose-900/40 rounded-xl p-4 flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
-                <p className="text-xs text-rose-300">{error}</p>
-              </div>
-            )}
-
-            {!activeSessionId ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-3">
-                <MessageSquare size={32} className="opacity-25" />
-                <div className="text-sm font-medium">Create or select a thread to begin</div>
-              </div>
-            ) : loadingMessages ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-500 text-xs gap-2">
-                <Loader2 className="animate-spin text-indigo-500" size={20} />
-                <span>Loading chat history…</span>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-3">
-                <MessageSquare size={24} className="opacity-25" />
-                <div className="text-xs text-slate-400">
-                  No messages in this workspace. Ask your first query below!
-                </div>
-              </div>
-            ) : (
-              messages.map((m, idx) => {
-                const isUser = m.role === "user";
-                return (
-                  <div
-                    key={m.id || idx}
-                    className={`flex flex-col max-w-[85%] ${
-                      isUser ? "ml-auto items-end" : "mr-auto items-start"
-                    }`}
-                  >
-                    <span className="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">
-                      {isUser ? "You" : "Assistant"}
+                    <span className="font-semibold block">Knowledge Base is Empty</span>
+                    <span className="text-[11px] text-amber-700">
+                      Upload documents in the{" "}
+                      <Link href="/documents" className="font-bold underline hover:text-amber-900">
+                        Documents Workspace
+                      </Link>{" "}
+                      to enable grounded retrieval.
                     </span>
-                    <div
-                      className={`px-4 py-3.5 rounded-2xl text-sm leading-relaxed border shadow-sm ${
-                        isUser
-                          ? "bg-indigo-600/10 border-indigo-500/20 text-white rounded-br-none"
-                          : "bg-slate-900/40 border-slate-900 text-slate-200 rounded-bl-none font-sans"
-                      }`}
-                    >
-                      {isUser ? (
-                        <p className="text-xs md:text-sm font-sans">{m.content}</p>
-                      ) : m.content ? (
-                        renderMarkdown(m.content, handleScrollToCitation)
-                      ) : (
-                        <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <Loader2 className="animate-spin text-indigo-500" size={12} />
-                          Reasoning over documents…
-                        </span>
-                      )}
+                  </div>
+                </div>
+              )}
 
-                      {/* Expandable Citations Section */}
-                      {!isUser && m.citations && m.citations.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-slate-900/80 space-y-2">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                            Grounding sources:
+              {/* Error banner */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 flex items-start gap-3 text-xs text-red-800 shadow-2xs">
+                  <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                  <p className="flex-1">{error}</p>
+                </div>
+              )}
+
+              {/* Empty State Welcome Screen */}
+              {messages.length === 0 && !loadingMessages && (
+                <div className="pt-6 pb-4 space-y-8 animate-fade-in">
+                  {/* Greeting Header */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-2xl">👋</span>
+                      <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
+                        Hello, {firstName}!
+                      </h1>
+                    </div>
+                    <p className="text-xs md:text-sm text-slate-500">
+                      Your Enterprise AI Assistant powered by RAG and Gemini
+                    </p>
+                  </div>
+
+                  {/* 4 Feature Starter Cards Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {starterCards.map((card, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => executeSendMessage(card.prompt)}
+                        className="bg-white hover:bg-slate-50 border border-slate-200/90 rounded-2xl p-4 text-left transition-all duration-150 shadow-2xs hover:shadow-sm hover:border-blue-300 group cursor-pointer flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="mb-3">{card.icon}</div>
+                          <h3 className="text-xs md:text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                            {card.title}
+                          </h3>
+                          <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                            {card.description}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Loading indicator */}
+              {loadingMessages && (
+                <div className="py-20 flex flex-col items-center justify-center text-xs text-slate-400 gap-2">
+                  <Loader2 className="animate-spin text-blue-600" size={24} />
+                  <span>Loading conversation…</span>
+                </div>
+              )}
+
+              {/* Messages List */}
+              {messages.map((m, idx) => {
+                const isUser = m.role === "user";
+
+                if (isUser) {
+                  return (
+                    <div key={m.id || idx} className="flex justify-end gap-2.5 items-end pl-8">
+                      <div className="flex flex-col items-end max-w-xl">
+                        <div className="bg-[#E0E7FF]/70 text-slate-800 border border-indigo-100 rounded-2xl rounded-br-xs px-4 py-3 text-xs md:text-sm shadow-2xs leading-relaxed">
+                          {m.content}
+                        </div>
+                        <span className="text-[10px] text-slate-400 mt-1 mr-1">
+                          {formatTime(m.created_at)}
+                        </span>
+                      </div>
+                      <div className="w-7 h-7 rounded-full bg-[#10B981] text-white text-[10px] font-bold flex items-center justify-center shrink-0 mb-4 shadow-2xs">
+                        {userInitials}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Assistant Message Card
+                return (
+                  <div key={m.id || idx} className="flex items-start gap-3 pr-2 md:pr-8">
+                    {/* Cube Avatar */}
+                    <div className="w-8 h-8 rounded-lg bg-[#0B132B] text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                      <svg
+                        className="w-4 h-4 text-blue-400"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                        <line x1="12" y1="22.08" x2="12" y2="12" />
+                      </svg>
+                    </div>
+
+                    <div className="flex-1 min-w-0 bg-white border border-slate-200/90 rounded-2xl p-4 md:p-5 shadow-2xs space-y-3">
+                      {/* Top Action Row */}
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
+                          <span>Aegis Assistant</span>
+                          <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono font-medium">
+                            Gemini
                           </span>
-                          <div className="grid grid-cols-1 gap-2">
-                            {m.citations.map((c) => (
-                              <div
-                                key={c.citation_index}
-                                ref={(el) => {
-                                  citationRefs.current[`citation-${c.citation_index}`] = el;
-                                }}
-                                className="bg-slate-950/60 border border-slate-850 hover:border-slate-800 rounded-xl p-3 text-xs flex flex-col gap-1.5 transition-all duration-300"
-                              >
-                                <div className="flex items-center justify-between gap-4">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="w-4.5 h-4.5 rounded bg-indigo-950 border border-indigo-900/40 text-[9px] text-indigo-400 flex items-center justify-center font-mono font-bold">
-                                      {c.citation_index}
-                                    </span>
-                                    <span className="text-[10px] text-slate-400 font-mono">
-                                      Similarity: {c.score.toFixed(4)}
+                        </span>
+
+                        <div className="flex items-center gap-1 text-slate-400">
+                          <button
+                            onClick={() => handleCopyMessage(m.id || String(idx), m.content)}
+                            className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                            title="Copy response"
+                          >
+                            {copiedMsgId === (m.id || String(idx)) ? (
+                              <Check size={13} className="text-emerald-600" />
+                            ) : (
+                              <Copy size={13} />
+                            )}
+                          </button>
+                          <button
+                            className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                            title="Good response"
+                          >
+                            <ThumbsUp size={13} />
+                          </button>
+                          <button
+                            className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                            title="Poor response"
+                          >
+                            <ThumbsDown size={13} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Message Content */}
+                      <div className="text-xs md:text-sm leading-relaxed text-slate-800">
+                        {m.content ? (
+                          renderMarkdown(m.content, handleScrollToCitation)
+                        ) : (
+                          <div className="flex items-center gap-2 text-slate-400 py-2 font-medium">
+                            <Loader2 className="animate-spin text-blue-600" size={16} />
+                            <span>Retrieving knowledge and synthesizing response…</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Inline Citations Drawer / Cards */}
+                      {m.citations && m.citations.length > 0 && (
+                        <div className="pt-3 border-t border-slate-100">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-2">
+                            <span>Sources ({m.citations.length})</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                            {m.citations.map((c) => {
+                              const isPdf = c.document_title.toLowerCase().endsWith(".pdf");
+                              return (
+                                <div
+                                  key={c.citation_index}
+                                  id={`inline-citation-${c.citation_index}`}
+                                  className="p-2.5 bg-slate-50 border border-slate-200/80 hover:border-blue-300 rounded-xl text-left transition-all"
+                                >
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <div
+                                      className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold uppercase ${
+                                        isPdf ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"
+                                      }`}
+                                    >
+                                      {isPdf ? "PDF" : "DOC"}
+                                    </div>
+                                    <span
+                                      className="text-xs font-semibold text-slate-800 truncate flex-1"
+                                      title={c.document_title}
+                                    >
+                                      {c.document_title}
                                     </span>
                                   </div>
-                                  <Link
-                                    href={`/documents/${c.document_id}`}
-                                    className="text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 truncate max-w-[150px]"
-                                    title={c.document_title}
-                                  >
-                                    {c.document_title} · p.{c.page_number}
-                                  </Link>
+                                  <div className="text-[10px] text-slate-500 font-medium">
+                                    Page {c.page_number}
+                                  </div>
+                                  <p className="mt-1 text-[11px] text-slate-600 line-clamp-2 italic leading-relaxed">
+                                    &ldquo;{c.text}&rdquo;
+                                  </p>
                                 </div>
-                                <p className="text-[11px] text-slate-300 leading-relaxed font-sans bg-slate-900/20 border border-slate-900/50 rounded-lg p-2">
-                                  {c.text}
-                                </p>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
 
-                      {/* Developer debug trace footer */}
-                      {!isUser && (m.latency || m.tokens) && (
-                        <div className="mt-3 pt-2.5 border-t border-slate-900/50">
+                      {/* Observability Log Toggle */}
+                      {(m.latency || m.tokens) && (
+                        <div className="pt-2 border-t border-slate-100">
                           <button
                             onClick={() =>
                               setExpandedTraceId(expandedTraceId === m.id ? null : m.id)
                             }
-                            className="text-[9px] font-mono text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer font-bold uppercase tracking-wider"
+                            className="text-[10px] font-mono font-medium text-slate-500 hover:text-blue-600 flex items-center gap-1 cursor-pointer"
                           >
-                            <span>Observability Log</span>
+                            <span>Observability Trace</span>
                             {expandedTraceId === m.id ? (
                               <ChevronUp size={10} />
                             ) : (
@@ -675,47 +695,23 @@ export default function ChatPage() {
                           </button>
 
                           {expandedTraceId === m.id && (
-                            <div className="mt-2.5 bg-slate-950/60 border border-slate-850/80 rounded-xl p-3.5 font-mono text-[10px] text-slate-400 space-y-1.5 shadow-inner">
-                              <div className="flex justify-between border-b border-slate-900 pb-1">
-                                <span>LLM Model</span>
-                                <span className="text-white font-bold">{selectedModel}</span>
-                              </div>
-                              <div className="flex justify-between border-b border-slate-900 pb-1">
+                            <div className="mt-2 bg-slate-50 border border-slate-200 rounded-xl p-3 font-mono text-[10px] text-slate-600 space-y-1">
+                              <div className="flex justify-between">
                                 <span>Total Latency</span>
-                                <span className="text-white flex items-center gap-1 font-bold">
-                                  <Clock size={10} className="text-amber-400" />
+                                <span className="font-bold text-slate-800">
                                   {m.latency?.total_ms ?? 0} ms
                                 </span>
                               </div>
-                              <div className="flex justify-between border-b border-slate-900 pb-1">
+                              <div className="flex justify-between">
                                 <span>Retrieval Time</span>
-                                <span className="text-white flex items-center gap-1 font-bold">
-                                  <Zap size={10} className="text-indigo-400" />
+                                <span className="text-blue-600 font-bold">
                                   {m.latency?.retrieval_ms ?? 0} ms
                                 </span>
                               </div>
-                              <div className="flex justify-between border-b border-slate-900 pb-1">
-                                <span>LLM Time</span>
-                                <span className="text-white font-bold">
-                                  {m.latency?.llm_ms ?? 0} ms
-                                </span>
-                              </div>
-                              <div className="flex justify-between border-b border-slate-900 pb-1">
+                              <div className="flex justify-between">
                                 <span>Tokens (P / C)</span>
-                                <span className="text-white font-bold">
-                                  {m.tokens?.prompt_tokens ?? 0} /{" "}
-                                  {m.tokens?.completion_tokens ?? 0}
-                                </span>
-                              </div>
-                              <div className="flex justify-between pt-0.5">
-                                <span>Est. Execution Cost</span>
-                                <span className="text-emerald-400 font-bold flex items-center">
-                                  <DollarSign size={10} />
-                                  {calculateCost(
-                                    m.tokens?.prompt_tokens ?? 0,
-                                    m.tokens?.completion_tokens ?? 0,
-                                    provider
-                                  )}
+                                <span className="font-bold text-slate-800">
+                                  {m.tokens?.prompt_tokens ?? 0} / {m.tokens?.completion_tokens ?? 0}
                                 </span>
                               </div>
                             </div>
@@ -725,60 +721,132 @@ export default function ChatPage() {
                     </div>
                   </div>
                 );
-              })
-            )}
+              })}
 
-            {/* Bouncing Dots Loading bubble */}
-            {sendingMessage &&
-              messages.length > 0 &&
-              messages[messages.length - 1].content === "" && (
-                <div className="flex flex-col mr-auto items-start max-w-[85%]">
-                  <span className="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">
-                    Assistant
-                  </span>
-                  <div className="bg-slate-900/40 border border-slate-900 text-slate-200 rounded-2xl rounded-bl-none px-4 py-3 flex items-center gap-1">
-                    <span className="text-xs text-slate-500 font-mono flex items-center gap-2">
-                      <Loader2 className="animate-spin text-indigo-500" size={12} />
-                      Synthesizing cited answer…
-                    </span>
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* ── Chat Composer Toolbar ────────────────────────────── */}
+            <div className="p-4 md:p-6 bg-[#F8FAFC]">
+              <form
+                onSubmit={handleFormSubmit}
+                className="max-w-4xl mx-auto bg-white border border-slate-200 rounded-2xl shadow-xs transition-all focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100"
+              >
+                {/* Textarea */}
+                <textarea
+                  rows={2}
+                  value={inputText}
+                  disabled={sendingMessage}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleFormSubmit(e);
+                    }
+                  }}
+                  placeholder="Ask anything about your documents..."
+                  className="w-full px-4 pt-3.5 pb-2 text-xs md:text-sm text-slate-800 placeholder-slate-400 bg-transparent resize-none focus:outline-none"
+                />
+
+                {/* Bottom Toolbar inside Composer */}
+                <div className="px-3 pb-3 flex items-center justify-between border-t border-slate-100 pt-2 gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Attach Document */}
+                    <Link
+                      href="/documents"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200/80 cursor-pointer"
+                    >
+                      <Paperclip size={13} />
+                      <span>Attach</span>
+                    </Link>
+
+                    {/* Web Search indicator */}
+                    <button
+                      type="button"
+                      disabled
+                      title="Knowledge Base search is active"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-400 bg-slate-50 border border-slate-200/80 rounded-lg cursor-not-allowed"
+                    >
+                      <Globe size={13} />
+                      <span>Web Search</span>
+                    </button>
+
+                    {/* Deep Research Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setDeepResearchActive(!deepResearchActive)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all border cursor-pointer ${
+                        deepResearchActive
+                          ? "bg-blue-50 border-blue-200 text-blue-600 font-semibold"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 border-slate-200/80"
+                      }`}
+                      title="Toggle deeper multi-passage reranking"
+                    >
+                      <Sparkles size={13} className={deepResearchActive ? "text-blue-600" : ""} />
+                      <span>Deep Research</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Gemini Model Selector Pill */}
+                    <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs font-medium text-slate-700">
+                      <Sparkles size={13} className="text-blue-600 shrink-0" />
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer pr-1"
+                      >
+                        {models.length > 0 ? (
+                          models.map((m) => (
+                            <option key={m.model_name} value={m.model_name}>
+                              {m.model_name}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                        )}
+                      </select>
+                    </div>
+
+                    {/* Send Button */}
+                    <button
+                      type="submit"
+                      disabled={!inputText.trim() || sendingMessage}
+                      className="w-8 h-8 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all shadow-xs cursor-pointer shrink-0"
+                      title="Send message"
+                    >
+                      {sendingMessage ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <Send size={14} />
+                      )}
+                    </button>
                   </div>
                 </div>
-              )}
-            <div ref={messagesEndRef} />
-          </div>
+              </form>
+            </div>
+          </main>
 
-          {/* Chat Form Footer */}
-          <footer className="p-4 border-t border-slate-900 bg-slate-950/60 backdrop-blur-md">
-            <form
-              onSubmit={handleSendMessage}
-              className="max-w-4xl mx-auto flex items-center gap-2 relative"
-            >
-              <input
-                type="text"
-                disabled={!activeSessionId || sendingMessage}
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                placeholder={
-                  activeSessionId
-                    ? "Ask anything about your documents…"
-                    : "Select a thread to start chatting"
-                }
-                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-xs md:text-sm text-white placeholder-slate-500
-                           focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/25 transition-all
-                           disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <button
-                type="submit"
-                disabled={!activeSessionId || !inputText.trim() || sendingMessage}
-                className="p-3.5 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700
-                           border border-indigo-500/20 hover:border-indigo-500/40 text-white rounded-xl shadow-lg hover:scale-105 transition-all
-                           disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 cursor-pointer"
-              >
-                <Send size={15} />
-              </button>
-            </form>
-          </footer>
-        </main>
+          {/* ── Right Context Panel ──────────────────────────────── */}
+          <div className="hidden lg:block">
+            <AppRightPanel
+              citations={activeCitations}
+              onSuggestedQuestionClick={(q) => executeSendMessage(q)}
+              onQuickActionClick={(act) => executeSendMessage(act)}
+              temperature={temperature}
+              setTemperature={setTemperature}
+              topK={topK}
+              setTopK={setTopK}
+              threshold={threshold}
+              setThreshold={setThreshold}
+              useReranker={useReranker}
+              setUseReranker={setUseReranker}
+              maxTokens={maxTokens}
+              setMaxTokens={setMaxTokens}
+              onScrollToCitation={handleScrollToCitation}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

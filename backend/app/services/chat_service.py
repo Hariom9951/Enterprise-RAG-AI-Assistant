@@ -6,6 +6,7 @@ Manages chat session lifecycle, memory budgeting, and token-streaming loops.
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -18,9 +19,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
 from app.models.chat_models import ChatMessage, ChatSession
-from app.services.llm_providers import get_llm_provider
+from app.services.llm_providers import (
+    GEMINI_QUOTA_EXHAUSTED_MESSAGE,
+    LLMProviderError,
+    LLMQuotaExhaustedError,
+    get_llm_provider,
+)
 from app.services.rag_service import RAGService
 from app.services.retrieval_service import RetrievalService
+
+
+def _build_citations_payload(included_chunks: list[Any]) -> list[dict[str, Any]]:
+    citations = []
+    for _idx, (chunk, doc, score, c_idx) in enumerate(included_chunks):
+        citations.append(
+            {
+                "citation_index": c_idx,
+                "chunk_id": str(chunk.id),
+                "document_id": str(doc.id),
+                "document_title": doc.original_filename,
+                "page_number": chunk.page_number,
+                "section_title": chunk.section_title,
+                "score": float(score),
+                "text": chunk.text,
+            }
+        )
+    return citations
+
+
+def _is_quota_exhausted_exception(exc: Exception) -> bool:
+    if isinstance(exc, LLMQuotaExhaustedError):
+        return True
+    if isinstance(exc, LLMProviderError) and exc.is_quota_exhausted:
+        return True
+    return bool(getattr(exc, "is_quota_exhausted", False))
 
 
 class ChatService:
@@ -145,6 +177,29 @@ class ChatService:
         await db.refresh(msg)
         return msg
 
+    def _assemble_history_str(
+        self,
+        past_messages: list[ChatMessage],
+        question: str,
+        context_str: str,
+    ) -> str:
+        history_items: list[str] = []
+        history_tokens = 0
+        max_history_tokens = (
+            settings.chat_max_tokens
+            - self._count_tokens(question)
+            - self._count_tokens(context_str)
+            - 200
+        )
+        for msg in reversed(past_messages):
+            msg_str = f"{msg.role.capitalize()}: {msg.content}\n"
+            msg_tok = self._count_tokens(msg_str)
+            if history_tokens + msg_tok > max_history_tokens:
+                break
+            history_items.insert(0, msg_str)
+            history_tokens += msg_tok
+        return "".join(history_items)
+
     async def execute_chat_stream(
         self,
         db: AsyncSession,
@@ -203,25 +258,8 @@ class ChatService:
         )
         retrieval_ms = int((time.perf_counter() - start_retrieval) * 1000)
 
-        # Format citations payload list
-        citations = []
-        for _idx, (chunk, doc, score, c_idx) in enumerate(included_chunks):
-            citations.append(
-                {
-                    "citation_index": c_idx,
-                    "chunk_id": str(chunk.id),
-                    "document_id": str(doc.id),
-                    "document_title": doc.original_filename,
-                    "page_number": chunk.page_number,
-                    "section_title": chunk.section_title,
-                    "score": float(score),
-                    "text": chunk.text,
-                }
-            )
-
-        # Yield citations first
-        import json
-
+        # Format citations payload list and yield first
+        citations = _build_citations_payload(included_chunks)
         yield f"event: citations\ndata: {json.dumps(citations)}\n\n"
 
         # 4. Fetch Message history for context memory budgeting
@@ -235,26 +273,7 @@ class ChatService:
         past_messages = list(history_res.scalars().all())
         past_messages.reverse()  # chronological order
 
-        # Assemble and budget history string
-        # Limit token count of history segment dynamically
-        history_items: list[str] = []
-        history_tokens = 0
-        max_history_tokens = (
-            settings.chat_max_tokens
-            - self._count_tokens(question)
-            - self._count_tokens(context_str)
-            - 200
-        )
-
-        for msg in reversed(past_messages):
-            msg_str = f"{msg.role.capitalize()}: {msg.content}\n"
-            msg_tok = self._count_tokens(msg_str)
-            if history_tokens + msg_tok > max_history_tokens:
-                break
-            history_items.insert(0, msg_str)
-            history_tokens += msg_tok
-
-        history_str = "".join(history_items)
+        history_str = self._assemble_history_str(past_messages, question, context_str)
 
         # 5. Prompt assembly
         system_prompt = (
@@ -273,14 +292,8 @@ class ChatService:
         user_prompt += f"--- Current Question ---\nUser: {question}"
 
         # 6. Stream LLM answer
-        prov_name = provider_name or settings.llm_provider
-        mod_name = model_name or (
-            settings.gemini_model
-            if prov_name == "gemini"
-            else "gpt-4o-mini"
-            if prov_name == "openai"
-            else "llama3"
-        )
+        prov_name = "gemini"
+        mod_name = model_name or settings.gemini_model
         temp = temperature if temperature is not None else settings.rag_temperature
         max_out = (
             max_tokens if max_tokens is not None else settings.rag_max_output_tokens
@@ -288,24 +301,37 @@ class ChatService:
 
         start_llm = time.perf_counter()
         full_answer_list = []
+        is_quota_error = False
         try:
             provider = get_llm_provider(prov_name, model=mod_name)
             async for token in provider.generate_response_stream(
                 system_prompt, user_prompt, temperature=temp, max_tokens=max_out
             ):
                 full_answer_list.append(token)
-                # Escaping token strings to be safe for SSE data: tags
                 yield f"event: token\ndata: {json.dumps(token)}\n\n"
         except Exception as e:
-            yield f"event: error\ndata: LLM Streaming generation failed: {e!s}\n\n"
-            return
+            if _is_quota_exhausted_exception(e):
+                is_quota_error = True
+            else:
+                err_text = (
+                    e.message
+                    if isinstance(e, LLMProviderError)
+                    else f"LLM Streaming generation failed: {e!s}"
+                )
+                yield f"event: error\ndata: {err_text}\n\n"
+                return
 
         llm_ms = int((time.perf_counter() - start_llm) * 1000)
-        full_answer = "".join(full_answer_list)
+
+        if is_quota_error:
+            full_answer = GEMINI_QUOTA_EXHAUSTED_MESSAGE
+            yield f"event: error\ndata: {GEMINI_QUOTA_EXHAUSTED_MESSAGE}\n\n"
+        else:
+            full_answer = "".join(full_answer_list)
 
         # 7. Aggregate Token Billing & latency details and persist assistant message
         prompt_tok = self._count_tokens(system_prompt) + self._count_tokens(user_prompt)
-        comp_tok = self._count_tokens(full_answer)
+        comp_tok = 0 if is_quota_error else self._count_tokens(full_answer)
         tokens_log = {
             "prompt_tokens": prompt_tok,
             "completion_tokens": comp_tok,
@@ -318,6 +344,7 @@ class ChatService:
             "llm_ms": llm_ms,
         }
 
+        # Persist assistant message in DB (preserving already-retrieved citations!)
         asst_msg = await self.add_message(
             db,
             session_id,
@@ -333,5 +360,6 @@ class ChatService:
             "session_id": str(session_id),
             "latency": latency_log,
             "tokens": tokens_log,
+            "quota_exhausted": is_quota_error,
         }
         yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"

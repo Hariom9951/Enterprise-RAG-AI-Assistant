@@ -26,7 +26,7 @@ class AgentChatRequest(BaseModel):
         None, description="Optional chat session to link this run to."
     )
     provider: str | None = Field(
-        None, description="LLM provider override (gemini, openai, ollama)."
+        None, description="LLM provider override (default: gemini)."
     )
     model: str | None = Field(None, description="Model name override.")
     temperature: float = Field(

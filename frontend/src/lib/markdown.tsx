@@ -7,7 +7,7 @@ import React from "react";
  * - Tables (collapsible and styled SaaS headers)
  * - Code blocks (syntax styling)
  * - Bold/Italic formatting
- * - Bracketed citations [1] (triggers smooth scroll triggers back to grounding files)
+ * - Bracketed citations [1] or (1) (triggers smooth scroll back to grounding files)
  */
 export function renderMarkdown(
   text: string,
@@ -35,10 +35,10 @@ export function renderMarkdown(
       elements.push(
         <pre
           key={`code-${key}`}
-          className="bg-slate-900 border border-slate-800 rounded-xl p-4 font-mono text-xs overflow-x-auto text-indigo-300 my-4 shadow-inner"
+          className="bg-slate-900 border border-slate-800 rounded-xl p-4 font-mono text-xs overflow-x-auto text-slate-100 my-3 shadow-xs"
         >
           {codeBlockLang && (
-            <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2 border-b border-slate-950 pb-1">
+            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2 border-b border-slate-800 pb-1">
               {codeBlockLang}
             </div>
           )}
@@ -55,23 +55,23 @@ export function renderMarkdown(
       elements.push(
         <div
           key={`table-${key}`}
-          className="overflow-x-auto my-4 rounded-xl border border-slate-850 bg-slate-900/10 backdrop-blur-sm"
+          className="overflow-x-auto my-3 rounded-xl border border-slate-200 bg-white shadow-xs"
         >
-          <table className="min-w-full divide-y divide-slate-800 text-xs text-left">
+          <table className="min-w-full divide-y divide-slate-200 text-xs text-left">
             {tableHeader.length > 0 && (
-              <thead className="bg-slate-900/50 text-slate-400 font-bold uppercase tracking-wider">
+              <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider">
                 <tr>
                   {tableHeader.map((h, i) => (
-                    <th key={i} className="px-4 py-2.5 font-semibold text-slate-300">
+                    <th key={i} className="px-4 py-2.5 font-semibold text-slate-700">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
             )}
-            <tbody className="divide-y divide-slate-850 bg-transparent text-slate-300">
+            <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
               {tableRows.map((row, idx) => (
-                <tr key={idx} className="hover:bg-slate-900/20 transition-colors">
+                <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
                   {row.map((cell, i) => (
                     <td key={i} className="px-4 py-2.5 font-medium">
                       {cell}
@@ -96,7 +96,7 @@ export function renderMarkdown(
           key={`list-${key}`}
           className={`${
             listType === "ul" ? "list-disc" : "list-decimal"
-          } pl-6 my-3.5 space-y-1.5 text-xs md:text-sm text-slate-200`}
+          } pl-5 my-2.5 space-y-1.5 text-xs md:text-sm text-slate-800`}
         >
           {listItems}
         </ListTag>
@@ -106,21 +106,23 @@ export function renderMarkdown(
   };
 
   const parseInlineStyles = (segment: string, keyPrefix: string): React.ReactNode[] => {
-    const parts = segment.split(/(\[\d+\])/g);
+    // Match either [1] or circled unicode digits like ① or (1)
+    const parts = segment.split(/(\[\d+\]|\(\d+\))/g);
 
     return parts.map((part, idx) => {
-      const citeMatch = part.match(/^\[(\d+)\]$/);
+      const citeMatch = part.match(/^\[(\d+)\]$/) || part.match(/^\((\d+)\)$/);
       if (citeMatch && onCitationClick) {
         const citeIdx = parseInt(citeMatch[1]);
         return (
-          <span
+          <button
             key={`${keyPrefix}-${idx}-cite`}
+            type="button"
             onClick={() => onCitationClick(citeIdx)}
-            className="mx-0.5 inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-mono font-bold bg-indigo-500/20 hover:bg-indigo-500/35 text-indigo-300 border border-indigo-500/30 rounded cursor-pointer transition-all duration-150 select-none transform hover:scale-105 active:scale-95"
+            className="inline-flex items-center justify-center w-4 h-4 mx-0.5 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 hover:scale-105 active:scale-95 transition-all cursor-pointer align-baseline select-none"
             title={`Jump to Source [${citeIdx}]`}
           >
-            [{citeIdx}]
-          </span>
+            {citeIdx}
+          </button>
         );
       }
 
@@ -130,14 +132,14 @@ export function renderMarkdown(
           {inlineParts.map((subPart, subIdx) => {
             if (subPart.startsWith("**") && subPart.endsWith("**")) {
               return (
-                <strong key={subIdx} className="font-bold text-white">
+                <strong key={subIdx} className="font-semibold text-slate-900">
                   {subPart.slice(2, -2)}
                 </strong>
               );
             }
             if (subPart.startsWith("*") && subPart.endsWith("*")) {
               return (
-                <em key={subIdx} className="italic text-slate-300">
+                <em key={subIdx} className="italic text-slate-700">
                   {subPart.slice(1, -1)}
                 </em>
               );
@@ -146,7 +148,7 @@ export function renderMarkdown(
               return (
                 <code
                   key={subIdx}
-                  className="bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded text-indigo-400 font-mono text-[10px]"
+                  className="bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-800 font-mono text-[11px]"
                 >
                   {subPart.slice(1, -1)}
                 </code>
@@ -246,7 +248,7 @@ export function renderMarkdown(
       elements.push(
         <p
           key={elementKey++}
-          className="text-xs md:text-sm leading-relaxed text-slate-300 my-2.5 font-sans"
+          className="text-xs md:text-sm leading-relaxed text-slate-800 my-2 font-normal"
         >
           {parseInlineStyles(line, `p-${elementKey}`)}
         </p>

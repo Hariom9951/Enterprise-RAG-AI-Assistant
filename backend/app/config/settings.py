@@ -240,7 +240,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     llm_provider: str = Field(
         default="gemini",
-        description="The primary LLM provider to use: 'gemini', 'openai', or 'ollama'.",
+        description="The primary LLM provider to use: 'gemini'.",
     )
     gemini_api_key: str | None = Field(
         default=None,
@@ -249,10 +249,6 @@ class Settings(BaseSettings):
     gemini_model: str = Field(
         default="gemini-3.5-flash",
         description="The Google Gemini model name to use.",
-    )
-    openai_api_key: str | None = Field(
-        default=None,
-        description="API Key for OpenAI services.",
     )
     rag_top_k: int = Field(
         default=5,
@@ -381,21 +377,27 @@ class Settings(BaseSettings):
     @classmethod
     def validate_secret_key(cls, value: str, info: Any) -> str:
         """Prevent starting in production if the default secret key is used."""
-        # Use info.data to get environment if available, otherwise read via env or direct field access
-        if value == "change-me-in-production" or "change-me" in value:
+        lowered = value.lower()
+        is_placeholder = (
+            "change-me" in lowered
+            or "changeme" in lowered
+            or "placeholder" in lowered
+            or value in {"secret", "default", "testsecret", "123456"}
+        )
+        if is_placeholder:
             import os
 
             env = os.environ.get("ENVIRONMENT", "development").lower()
             if env == "production":
                 raise ValueError(
-                    "SECRET_KEY cannot be a default placeholder in production. "
+                    "SECRET_KEY cannot be a default or placeholder value in production. "
                     "You MUST set a strong secret key using ENVIRONMENT variable."
                 )
             else:
                 import warnings
 
                 warnings.warn(
-                    "SECRET_KEY is set to the default placeholder value. "
+                    "SECRET_KEY is set to an insecure placeholder value. "
                     "This is insecure and MUST be changed before any production deployment.",
                     stacklevel=2,
                 )

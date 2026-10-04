@@ -1,37 +1,29 @@
 "use client";
 
-/**
- * Enterprise RAG AI Assistant — Document Management Dashboard
- * ==========================================================
- * Provides a production-grade interface for uploading documents via
- * drag-and-drop, listing metadata, searching, renaming, and deleting files.
- * Includes dynamic polling for background Celery parsing tasks.
- */
-
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   UploadCloud,
   FileText,
   Trash2,
-  Edit2,
   Search,
   Loader2,
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
   CheckCircle,
-  File,
   X,
   RefreshCw,
+  FolderOpen
 } from "lucide-react";
 import { documentsApi, DocumentResponse } from "@/lib/api";
-import Navigation from "@/components/Navigation";
+import AppSidebar from "@/components/layout/AppSidebar";
+import AppTopbar from "@/components/layout/AppTopbar";
 
 const PAGE_SIZE = 8;
 
 export default function DocumentsPage() {
-  // ── State management ───────────────────────────────────────────────────────
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -45,14 +37,10 @@ export default function DocumentsPage() {
   // Modals & Feedback
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [editingDoc, setEditingDoc] = useState<DocumentResponse | null>(null);
-  const [newName, setNewName] = useState("");
   const [confirmDeleteDoc, setConfirmDeleteDoc] = useState<DocumentResponse | null>(null);
 
-  // ── API Fetch Calls ────────────────────────────────────────────────────────
+  // API Fetch
   const fetchDocuments = useCallback(async () => {
-    setLoading(true);
-    setErrorMsg(null);
     try {
       const data = await documentsApi.list({
         limit: PAGE_SIZE,
@@ -61,7 +49,7 @@ export default function DocumentsPage() {
       });
       setDocuments(data);
     } catch (err: unknown) {
-      console.error(err);
+      console.error("Failed to load documents:", err);
       const errorResponse = err as { error?: { message?: string } } | undefined;
       setErrorMsg(errorResponse?.error?.message || "Failed to load documents.");
     } finally {
@@ -70,40 +58,37 @@ export default function DocumentsPage() {
   }, [offset, search]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchDocuments();
-    }, 0);
-    return () => clearTimeout(timer);
+    void fetchDocuments();
   }, [fetchDocuments]);
 
-  // Debounced search trigger reset
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setOffset(0);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [search]);
+  const handleRefresh = () => {
+    setLoading(true);
+    setErrorMsg(null);
+    void fetchDocuments();
+  };
 
-  // ── Transient State Polling Hook ──────────────────────────────────────────
+  // Transient State Polling Hook for Ingestion
   useEffect(() => {
-    // Identify which listed documents are in a transient background processing state
     const transientDocs = documents.filter((doc) =>
       ["UPLOADED", "QUEUED", "PROCESSING"].includes(doc.processing_status.toUpperCase())
     );
 
     if (transientDocs.length === 0) return;
 
-    // Start polling status every 3 seconds for active tasks
     const interval = setInterval(async () => {
       try {
         let hasChanges = false;
         const updatedDocs = await Promise.all(
           documents.map(async (doc) => {
             if (["UPLOADED", "QUEUED", "PROCESSING"].includes(doc.processing_status.toUpperCase())) {
-              const statusResponse = await documentsApi.status(doc.id);
-              if (statusResponse.status !== doc.processing_status) {
-                hasChanges = true;
-                return { ...doc, processing_status: statusResponse.status };
+              try {
+                const refreshed = await documentsApi.get(doc.id);
+                if (refreshed.processing_status !== doc.processing_status) {
+                  hasChanges = true;
+                  return refreshed;
+                }
+              } catch (e) {
+                console.error("Error polling document:", e instanceof Error ? e.message : e);
               }
             }
             return doc;
@@ -113,94 +98,70 @@ export default function DocumentsPage() {
         if (hasChanges) {
           setDocuments(updatedDocs);
         }
-      } catch (err) {
-        console.error("Error polling document status:", err);
+      } catch (e) {
+        console.error("Background document status poll failed:", e);
       }
     }, 3000);
 
     return () => clearInterval(interval);
   }, [documents]);
 
-  // ── Ingestion & Upload Actions ─────────────────────────────────────────────
+  // Handle Upload
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
 
-    // Basic frontend client validations
-    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
     const allowedExtensions = [".pdf", ".docx", ".txt"];
+    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
     if (!allowedExtensions.includes(ext)) {
-      setErrorMsg(`File extension '${ext}' is not supported. Allowed: PDF, DOCX, TXT.`);
+      setErrorMsg(`Unsupported file type: ${ext}. Please upload PDF, DOCX, or TXT.`);
       return;
     }
 
-    const maxLimit = 50 * 1024 * 1024; // 50MB matching backend settings
-    if (file.size > maxLimit) {
-      setErrorMsg("File size exceeds the maximum limit of 50MB.");
+    if (file.size > 50 * 1024 * 1024) {
+      setErrorMsg("File size exceeds 50MB maximum limit.");
       return;
     }
 
     setUploading(true);
-    setUploadProgress(20);
+    setUploadProgress(15);
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    try {
-      const interval = setInterval(() => {
-        setUploadProgress((prev) => (prev < 80 ? prev + 15 : prev));
-      }, 200);
+    const progressTimer = setInterval(() => {
+      setUploadProgress((prev) => (prev < 85 ? prev + 15 : prev));
+    }, 250);
 
-      await documentsApi.upload(file);
-      clearInterval(interval);
+    try {
+      const newDoc = await documentsApi.upload(file);
+      clearInterval(progressTimer);
       setUploadProgress(100);
-      setSuccessMsg(`Document '${file.name}' uploaded and queued for background processing.`);
-      fetchDocuments();
+      setSuccessMsg(`"${file.name}" uploaded successfully. Ingestion pipeline scheduled.`);
+      setDocuments((prev) => [newDoc, ...prev]);
     } catch (err: unknown) {
+      clearInterval(progressTimer);
       console.error(err);
       const errorResponse = err as { error?: { message?: string } } | undefined;
-      setErrorMsg(errorResponse?.error?.message || "File upload failed.");
+      setErrorMsg(errorResponse?.error?.message || "File upload failed. Please try again.");
     } finally {
-      setTimeout(() => {
-        setUploading(false);
-        setUploadProgress(0);
-      }, 500);
+      setUploading(false);
+      setUploadProgress(0);
     }
   };
 
-  // ── Rename Action ──────────────────────────────────────────────────────────
-  const handleRename = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingDoc || !newName.trim()) return;
-
+  // Delete Action
+  const handleDelete = async (id: string) => {
     try {
-      await documentsApi.rename(editingDoc.id, newName.trim());
-      setSuccessMsg(`Document renamed to '${newName.trim()}'.`);
-      setEditingDoc(null);
-      fetchDocuments();
-    } catch (err: unknown) {
-      console.error(err);
-      const errorResponse = err as { error?: { message?: string } } | undefined;
-      setErrorMsg(errorResponse?.error?.message || "Failed to rename document.");
-    }
-  };
-
-  // ── Delete Action ──────────────────────────────────────────────────────────
-  const handleDelete = async () => {
-    if (!confirmDeleteDoc) return;
-
-    try {
-      await documentsApi.delete(confirmDeleteDoc.id);
-      setSuccessMsg(`Document '${confirmDeleteDoc.original_filename}' deleted.`);
+      await documentsApi.delete(id);
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
+      setSuccessMsg("Document deleted successfully.");
       setConfirmDeleteDoc(null);
-      fetchDocuments();
     } catch (err: unknown) {
-      console.error(err);
       const errorResponse = err as { error?: { message?: string } } | undefined;
       setErrorMsg(errorResponse?.error?.message || "Failed to delete document.");
     }
   };
 
-  // Helper to format file sizes
   const formatSize = (bytes: number) => {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
@@ -209,44 +170,43 @@ export default function DocumentsPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
-  // Render Status Badge
   const renderStatusBadge = (status: string) => {
     switch (status?.toUpperCase()) {
       case "UPLOADED":
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
             Uploaded
           </span>
         );
       case "QUEUED":
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-950/40 text-purple-300 border border-purple-800/40">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
             Queued
           </span>
         );
       case "PROCESSING":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-950/40 text-amber-300 border border-amber-800/40 animate-pulse">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping shrink-0" />
             Processing
           </span>
         );
       case "COMPLETED":
       case "PROCESSED":
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-950/40 text-emerald-300 border border-emerald-800/40">
-            Processed
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+            Indexed
           </span>
         );
       case "FAILED":
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-950/40 text-red-300 border border-red-800/40">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 border border-red-200">
             Failed
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
             {status || "Unknown"}
           </span>
         );
@@ -254,292 +214,281 @@ export default function DocumentsPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 pl-0 md:pl-64">
-      <Navigation />
-      {/* Background Gradients */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
-      <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute top-1/3 left-1/4 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
+    <div className="flex h-screen bg-[#F8FAFC] text-slate-800 overflow-hidden font-sans">
+      {/* ── Left Sidebar (Dark Navy) ─────────────────────────────── */}
+      <AppSidebar
+        isMobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 relative z-10">
-        {/* Banner Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-            Document Center
-          </h1>
-          <p className="mt-2 text-sm sm:text-base text-slate-400 max-w-3xl">
-            Ingest enterprise knowledge bases (PDF, DOCX, TXT) securely. Files are automatically verified, hashed for deduplication, and stored isolated in your workspace.
-          </p>
-        </div>
+      {/* ── Main Layout ─────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col md:pl-64 h-full overflow-hidden">
+        <AppTopbar onToggleMobileSidebar={() => setMobileSidebarOpen(true)} />
 
-        {/* Global Feedback Notifications */}
-        {errorMsg && (
-          <div className="mb-6 flex items-start space-x-3 rounded-lg border border-red-500/20 bg-red-950/20 p-4 text-red-200">
-            <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
-            <div className="flex-1 text-sm font-medium">{errorMsg}</div>
-            <button onClick={() => setErrorMsg(null)} className="text-red-400 hover:text-red-200">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-
-        {successMsg && (
-          <div className="mb-6 flex items-start space-x-3 rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-4 text-emerald-200">
-            <CheckCircle className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
-            <div className="flex-1 text-sm font-medium">{successMsg}</div>
-            <button onClick={() => setSuccessMsg(null)} className="text-emerald-400 hover:text-emerald-200">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Uploader Column */}
-          <div className="lg:col-span-1">
-            <div
-              className={`rounded-2xl border-2 border-dashed p-8 flex flex-col items-center justify-center text-center transition-all duration-300 ${
-                dragOver
-                  ? "border-indigo-500 bg-indigo-500/10 scale-[1.01]"
-                  : "border-slate-800 bg-slate-900/30 hover:border-slate-700"
-              }`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                handleUpload(e.dataTransfer.files);
-              }}
-            >
-              <div className="p-4 bg-slate-850 rounded-full text-indigo-400 mb-4 ring-1 ring-slate-850 shadow-inner">
-                <UploadCloud className="h-10 w-10 animate-pulse" />
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-1">Upload Document</h3>
-              <p className="text-xs text-slate-400 mb-6 max-w-xs">
-                Drag & drop files here or click to browse. Supports PDF, DOCX, and TXT (Max 50MB).
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-8 scrollbar-thin">
+          <div className="max-w-6xl mx-auto space-y-6">
+            
+            {/* Header */}
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+                <FileText className="text-blue-600" size={24} />
+                Documents & Knowledge Base
+              </h1>
+              <p className="text-xs md:text-sm text-slate-500 mt-1">
+                Upload and manage files. Uploaded documents are chunked and embedded using BAAI/bge-base-en-v1.5.
               </p>
-
-              <label className="cursor-pointer">
-                <span className="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 transition-all duration-200 hover:scale-[1.02]">
-                  Select File
-                </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.docx,.txt"
-                  onChange={(e) => handleUpload(e.target.files)}
-                />
-              </label>
-
-              {uploading && (
-                <div className="w-full mt-6">
-                  <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-                    <span>Uploading...</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="bg-gradient-to-r from-indigo-500 to-sky-400 h-1.5 rounded-full transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* List Dashboard Column */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Search and Refresh */}
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Search files by name..."
-                  className="w-full bg-slate-900/60 border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <button
-                onClick={fetchDocuments}
-                className="flex items-center gap-2 px-4 py-2 border border-slate-800 rounded-lg text-sm bg-slate-900/40 hover:bg-slate-800/60 text-slate-300 hover:text-white transition-all shrink-0 w-full sm:w-auto justify-center"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </button>
             </div>
 
-            {/* List panel */}
-            <div className="border border-slate-800 bg-slate-900/20 backdrop-blur-md rounded-2xl overflow-hidden">
-              {loading ? (
-                <div className="p-12 flex flex-col items-center justify-center text-slate-500">
-                  <Loader2 className="h-8 w-8 animate-spin text-indigo-400 mb-3" />
-                  <p className="text-sm font-medium">Scanning storage workspace...</p>
+            {/* Error / Success Notifications */}
+            {errorMsg && (
+              <div className="flex items-start justify-between rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 text-xs shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+                  <span>{errorMsg}</span>
                 </div>
-              ) : documents.length === 0 ? (
-                <div className="p-16 flex flex-col items-center justify-center text-center">
-                  <div className="p-4 bg-slate-900/50 rounded-full text-slate-600 mb-4 ring-1 ring-slate-850">
-                    <File className="h-10 w-10" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-300 mb-1">No documents found</h3>
-                  <p className="text-xs text-slate-500 max-w-sm">
-                    {search ? "No matching files found for this query." : "Ingest files on the left partition to get started."}
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-850">
-                  <div className="grid grid-cols-12 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400 bg-slate-900/50 items-center">
-                    <div className="col-span-5 sm:col-span-6">Filename</div>
-                    <div className="col-span-3 sm:col-span-2 text-center">Status</div>
-                    <div className="col-span-2 sm:col-span-2 text-right">Size</div>
-                    <div className="col-span-2 sm:col-span-2 text-right">Actions</div>
-                  </div>
-
-                  {documents.map((doc) => (
-                    <div key={doc.id} className="grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-900/20 transition-all duration-150">
-                      <div className="col-span-5 sm:col-span-6 flex items-center space-x-3 pr-2 overflow-hidden">
-                        <FileText className="h-5 w-5 text-indigo-400 shrink-0" />
-                        <div className="overflow-hidden">
-                          <Link
-                            href={`/documents/${doc.id}`}
-                            className="text-sm font-medium text-slate-200 truncate hover:text-indigo-400 transition-colors block"
-                            title={doc.original_filename}
-                          >
-                            {doc.original_filename}
-                          </Link>
-                          <p className="text-[10px] text-slate-500">
-                            Uploaded {new Date(doc.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="col-span-3 sm:col-span-2 flex justify-center">
-                        {renderStatusBadge(doc.processing_status)}
-                      </div>
-
-                      <div className="col-span-2 sm:col-span-2 text-right text-xs text-slate-400 font-mono">
-                        {formatSize(doc.file_size)}
-                      </div>
-
-                      <div className="col-span-2 sm:col-span-2 flex items-center justify-end space-x-2">
-                        <button
-                          onClick={() => {
-                            setEditingDoc(doc);
-                            setNewName(doc.original_filename);
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                          title="Rename file"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteDoc(doc)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/20 transition-colors"
-                          title="Delete file"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Pagination */}
-            {!loading && documents.length > 0 && (
-              <div className="flex items-center justify-between px-2">
-                <span className="text-xs text-slate-500">
-                  Showing page {Math.floor(offset / PAGE_SIZE) + 1}
-                </span>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setOffset((prev) => Math.max(0, prev - PAGE_SIZE))}
-                    disabled={offset === 0}
-                    className="p-2 border border-slate-800 rounded-lg bg-slate-900/40 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900/40 transition-all cursor-pointer disabled:cursor-not-allowed"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setOffset((prev) => prev + PAGE_SIZE)}
-                    disabled={documents.length < PAGE_SIZE}
-                    className="p-2 border border-slate-800 rounded-lg bg-slate-900/40 text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900/40 transition-all cursor-pointer disabled:cursor-not-allowed"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
+                <button onClick={() => setErrorMsg(null)} className="text-red-500 hover:text-red-800">
+                  <X size={14} />
+                </button>
               </div>
             )}
-          </div>
-        </div>
-      </main>
 
-      {/* ── Rename Dialog Modal ──────────────────────────────────────────────── */}
-      {editingDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative animate-in fade-in zoom-in duration-200">
-            <button onClick={() => setEditingDoc(null)} className="absolute top-4 right-4 text-slate-500 hover:text-white">
-              <X className="h-5 w-5" />
-            </button>
-            <h3 className="text-lg font-bold text-white mb-4">Rename Document</h3>
-            <form onSubmit={handleRename} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">
-                  Filename
-                </label>
-                <input
-                  type="text"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-650 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                />
-              </div>
-              <div className="flex items-center justify-end space-x-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingDoc(null)}
-                  className="px-4 py-2 border border-slate-850 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold text-white shadow-md shadow-indigo-600/10"
-                >
-                  Save Changes
+            {successMsg && (
+              <div className="flex items-start justify-between rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800 text-xs shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{successMsg}</span>
+                </div>
+                <button onClick={() => setSuccessMsg(null)} className="text-emerald-500 hover:text-emerald-800">
+                  <X size={14} />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            )}
 
-      {/* ── Delete Confirmation Dialog Modal ─────────────────────────────────── */}
+            {/* Main 2-column Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* Uploader Column */}
+              <div className="lg:col-span-1">
+                <div
+                  className={`bg-white rounded-2xl border-2 border-dashed p-6 flex flex-col items-center justify-center text-center transition-all duration-200 shadow-2xs ${
+                    dragOver
+                      ? "border-blue-500 bg-blue-50/50 scale-[1.01]"
+                      : "border-slate-300 hover:border-blue-400"
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOver(true);
+                  }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOver(false);
+                    handleUpload(e.dataTransfer.files);
+                  }}
+                >
+                  <div className="p-3.5 bg-blue-50 text-blue-600 rounded-full mb-3 shadow-2xs">
+                    <UploadCloud className="h-8 w-8" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900 mb-1">
+                    Upload Documents
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mb-5 max-w-xs">
+                    Drag and drop files here, or browse from your device. Supports PDF, DOCX, and TXT (Max 50MB).
+                  </p>
+
+                  <label className="cursor-pointer">
+                    <span className="inline-flex items-center px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition-colors">
+                      Select File
+                    </span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.docx,.txt"
+                      onChange={(e) => handleUpload(e.target.files)}
+                    />
+                  </label>
+
+                  {uploading && (
+                    <div className="w-full mt-4">
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1 font-medium">
+                        <span>Uploading...</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Documents List Column */}
+              <div className="lg:col-span-2 space-y-4">
+                
+                {/* Search & Refresh Toolbar */}
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <div className="relative w-full">
+                    <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search files by name..."
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 shadow-2xs"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    onClick={handleRefresh}
+                    className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors shrink-0 cursor-pointer"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 text-blue-600" />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+
+                {/* Table Container */}
+                <div className="bg-white border border-slate-200/90 rounded-2xl shadow-2xs overflow-hidden">
+                  {loading ? (
+                    <div className="p-12 flex flex-col items-center justify-center text-slate-400 text-xs gap-2">
+                      <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                      <span>Loading documents…</span>
+                    </div>
+                  ) : documents.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400 space-y-2">
+                      <FolderOpen className="h-10 w-10 mx-auto text-slate-300" />
+                      <h4 className="text-xs font-bold text-slate-700">No documents found</h4>
+                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                        {search ? "No files matching your search term." : "Upload documents using the left panel to populate your RAG knowledge base."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {/* Table Header */}
+                      <div className="grid grid-cols-12 px-5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50/70 items-center">
+                        <div className="col-span-6 sm:col-span-6">Filename</div>
+                        <div className="col-span-3 sm:col-span-2 text-center">Status</div>
+                        <div className="col-span-3 sm:col-span-2 text-right">Size</div>
+                        <div className="col-span-12 sm:col-span-2 text-right mt-1 sm:mt-0">Actions</div>
+                      </div>
+
+                      {/* Rows */}
+                      {documents.map((doc) => {
+                        const isPdf = doc.original_filename.toLowerCase().endsWith(".pdf");
+                        return (
+                          <div
+                            key={doc.id}
+                            className="grid grid-cols-12 px-5 py-3.5 items-center hover:bg-slate-50/60 transition-colors text-xs"
+                          >
+                            <div className="col-span-6 sm:col-span-6 flex items-center gap-2.5 pr-2 overflow-hidden">
+                              <div
+                                className={`w-6 h-6 rounded flex items-center justify-center text-[8px] font-bold uppercase shrink-0 ${
+                                  isPdf ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"
+                                }`}
+                              >
+                                {isPdf ? "PDF" : "DOC"}
+                              </div>
+                              <div className="overflow-hidden min-w-0">
+                                <Link
+                                  href={`/documents/${doc.id}`}
+                                  className="font-semibold text-slate-800 truncate hover:text-blue-600 transition-colors block"
+                                  title={doc.original_filename}
+                                >
+                                  {doc.original_filename}
+                                </Link>
+                                <span className="text-[10px] text-slate-400 block mt-0.5">
+                                  Uploaded {new Date(doc.created_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="col-span-3 sm:col-span-2 flex justify-center">
+                              {renderStatusBadge(doc.processing_status)}
+                            </div>
+
+                            <div className="col-span-3 sm:col-span-2 text-right font-mono text-[11px] text-slate-500">
+                              {formatSize(doc.file_size)}
+                            </div>
+
+                            <div className="col-span-12 sm:col-span-2 flex items-center justify-end gap-1 mt-2 sm:mt-0">
+                              <Link
+                                href={`/documents/${doc.id}`}
+                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="View document chunks"
+                              >
+                                <FileText size={13} />
+                              </Link>
+                              <button
+                                onClick={() => setConfirmDeleteDoc(doc)}
+                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                                title="Delete"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                  <span>
+                    Showing {documents.length > 0 ? offset + 1 : 0} to {offset + documents.length}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                      disabled={offset === 0}
+                      className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <button
+                      onClick={() => setOffset(offset + PAGE_SIZE)}
+                      disabled={documents.length < PAGE_SIZE}
+                      className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+        </main>
+      </div>
+
+
+
+      {/* Delete Confirmation Modal */}
       {confirmDeleteDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative animate-in fade-in zoom-in duration-200">
-            <h3 className="text-lg font-bold text-white mb-2">Delete Document</h3>
-            <p className="text-sm text-slate-400 mb-6">
-              Are you sure you want to permanently delete <strong className="text-slate-200">&apos;{confirmDeleteDoc.original_filename}&apos;</strong>? This action cannot be undone and will delete the physical file.
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 max-w-sm w-full shadow-lg space-y-3 animate-fade-in">
+            <h3 className="text-sm font-bold text-slate-900">Confirm Deletion</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete{" "}
+              <strong className="text-slate-900 font-semibold">{confirmDeleteDoc.original_filename}</strong>? All associated 768-dim embeddings will be removed from pgvector.
             </p>
-            <div className="flex items-center justify-end space-x-3">
+            <div className="flex justify-end gap-2 text-xs pt-1">
               <button
-                type="button"
                 onClick={() => setConfirmDeleteDoc(null)}
-                className="px-4 py-2 border border-slate-850 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-3 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={handleDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-semibold text-white shadow-md shadow-red-600/10"
+                onClick={() => handleDelete(confirmDeleteDoc.id)}
+                className="px-4 py-2 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-500 transition-colors"
               >
-                Delete File
+                Delete
               </button>
             </div>
           </div>

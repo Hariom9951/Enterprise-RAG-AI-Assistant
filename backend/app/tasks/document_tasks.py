@@ -17,12 +17,36 @@ from typing import Any, cast
 from celery import Task
 from celery.utils.log import get_task_logger
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
-from app.db.session import AsyncSessionLocal
+from app.config.settings import settings
 from app.models.document import Document
 from app.tasks.celery_app import celery_app
 
 logger = get_task_logger(__name__)
+
+# Dedicated engine for worker tasks with NullPool to prevent connection reuse across transient event loops
+_worker_engine = None
+_WorkerSession = None
+
+
+def _get_worker_session_maker() -> async_sessionmaker[AsyncSession]:
+    global _worker_engine, _WorkerSession
+    if _WorkerSession is None:
+        _worker_engine = create_async_engine(
+            settings.database_url,
+            poolclass=NullPool,
+            echo=settings.debug,
+        )
+        _WorkerSession = async_sessionmaker(
+            bind=_worker_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+            autocommit=False,
+        )
+    return _WorkerSession
 
 
 # ── Thread-Safe Sync to Async Bridge ─────────────────────────────────────────
@@ -55,7 +79,8 @@ def run_async_in_thread(coro: Any) -> Any:
 @asynccontextmanager
 async def get_async_session() -> Any:
     """Yield an isolated async database session for worker tasks."""
-    session = AsyncSessionLocal()
+    session_maker = _get_worker_session_maker()
+    session = session_maker()
     try:
         yield session
     finally:

@@ -24,7 +24,20 @@ class RedisCacheService:
         self._redis: Redis | None = None
 
     def _get_redis(self) -> Redis:
-        if self._redis is None:
+        import asyncio
+
+        current_loop = None
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+
+        pool_loop = getattr(
+            getattr(self._redis, "connection_pool", None), "_loop", None
+        )
+        if self._redis is None or (
+            current_loop and pool_loop and pool_loop is not current_loop
+        ):
             self._redis = Redis.from_url(settings.redis_url, decode_responses=True)
         return self._redis
 

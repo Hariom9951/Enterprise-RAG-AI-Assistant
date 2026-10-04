@@ -23,7 +23,12 @@ from app.core.logging import logger
 from app.models.chunk import Chunk
 from app.models.document import Document
 from app.models.rag_query import RagQuery
-from app.services.llm_providers import LLMProviderError, get_llm_provider
+from app.services.llm_providers import (
+    GEMINI_QUOTA_EXHAUSTED_MESSAGE,
+    LLMProviderError,
+    LLMQuotaExhaustedError,
+    get_llm_provider,
+)
 from app.services.retrieval_service import RetrievalService
 
 
@@ -201,14 +206,8 @@ class RAGService:
         """
         start_time = time.perf_counter()
         t_k = top_k or settings.rag_top_k
-        p_name = provider_name or settings.llm_provider
-        m_name = model_name or (
-            settings.gemini_model
-            if p_name.lower() == "gemini"
-            else "gpt-4o-mini"
-            if p_name.lower() == "openai"
-            else "llama3"
-        )
+        p_name = "gemini"
+        m_name = model_name or settings.gemini_model
 
         # 1. Retrieval (Semantic/Hybrid search)
         retrieval_start = time.perf_counter()
@@ -256,10 +255,34 @@ class RAGService:
                 temperature=settings.rag_temperature,
                 max_tokens=settings.rag_max_output_tokens,
             )
+        except LLMQuotaExhaustedError:
+            logger.warning(
+                "RAG LLM quota exhausted. Preserving retrieved citations with user notice."
+            )
+            answer_text = GEMINI_QUOTA_EXHAUSTED_MESSAGE
+            token_usage = {
+                "prompt_tokens": self._count_tokens(system_prompt)
+                + self._count_tokens(user_prompt),
+                "completion_tokens": 0,
+                "total_tokens": self._count_tokens(system_prompt)
+                + self._count_tokens(user_prompt),
+            }
         except LLMProviderError as lpe:
-            logger.error(f"RAG LLM execution failed: {lpe!s}")
-            # Re-raise to let API exception handlers format correctly
-            raise
+            if lpe.is_quota_exhausted:
+                logger.warning(
+                    "RAG LLM quota exhausted. Preserving retrieved citations with user notice."
+                )
+                answer_text = GEMINI_QUOTA_EXHAUSTED_MESSAGE
+                token_usage = {
+                    "prompt_tokens": self._count_tokens(system_prompt)
+                    + self._count_tokens(user_prompt),
+                    "completion_tokens": 0,
+                    "total_tokens": self._count_tokens(system_prompt)
+                    + self._count_tokens(user_prompt),
+                }
+            else:
+                logger.error(f"RAG LLM execution failed: {lpe!s}")
+                raise
 
         llm_latency = int((time.perf_counter() - llm_start) * 1000)
 
@@ -268,8 +291,23 @@ class RAGService:
 
         await cache_service.record_latency("llm", float(llm_latency))
 
-        # 6. Citation Generation
-        citations = self._generate_citations(answer_text, included_chunks)
+        # 6. Citation Generation (preserving already-retrieved sources if quota exhausted)
+        if answer_text == GEMINI_QUOTA_EXHAUSTED_MESSAGE:
+            citations = [
+                {
+                    "citation_index": item[3],
+                    "chunk_id": str(item[0].id),
+                    "document_id": str(item[1].id),
+                    "document_title": item[1].original_filename,
+                    "page_number": item[0].page_number,
+                    "section_title": item[0].section_title,
+                    "text": item[0].text,
+                    "score": item[2],
+                }
+                for item in included_chunks
+            ]
+        else:
+            citations = self._generate_citations(answer_text, included_chunks)
         total_latency = int((time.perf_counter() - start_time) * 1000)
 
         # 7. Persist metrics and query log to DB
@@ -338,7 +376,7 @@ class RAGService:
                 "total_queries": 0,
                 "average_latency_ms": 0.0,
                 "total_tokens_used": 0,
-                "provider_distribution": {"GEMINI": 0, "OPENAI": 0, "OLLAMA": 0},
+                "provider_distribution": {"GEMINI": 0},
             }
 
         # Average latency
@@ -370,7 +408,5 @@ class RAGService:
             "total_tokens_used": total_tokens,
             "provider_distribution": {
                 "GEMINI": dist.get("GEMINI", 0),
-                "OPENAI": dist.get("OPENAI", 0),
-                "OLLAMA": dist.get("OLLAMA", 0),
             },
         }
