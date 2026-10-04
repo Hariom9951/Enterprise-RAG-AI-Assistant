@@ -39,6 +39,7 @@ class RedisCacheService:
             current_loop and pool_loop and pool_loop is not current_loop
         ):
             self._redis = Redis.from_url(settings.redis_url, decode_responses=True)
+        assert self._redis is not None
         return self._redis
 
     async def get(self, key: str) -> Any | None:
