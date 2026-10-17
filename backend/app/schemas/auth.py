@@ -128,6 +128,25 @@ class RefreshRequest(_BaseSchema):
 
 
 # =============================================================================
+# Logout
+# =============================================================================
+
+
+class LogoutRequest(_BaseSchema):
+    """
+    Request body for ``POST /api/v1/auth/logout``.
+
+    Optional ``refresh_token`` string. If provided, the token and its lineage
+    are revoked server-side. If omitted or malformed, logout safely succeeds.
+    """
+
+    refresh_token: str | None = Field(
+        default=None,
+        description="Active refresh token to revoke server-side.",
+    )
+
+
+# =============================================================================
 # Token Response
 # =============================================================================
 

@@ -13,7 +13,8 @@ import {
   LogOut,
   ArrowRight
 } from "lucide-react";
-import { isAuthenticated, clearTokens } from "@/lib/auth";
+import { isAuthenticated, clearTokens, getRefreshToken } from "@/lib/auth";
+import { authApi } from "@/lib/api";
 
 // =============================================================================
 // Feature Cards Data (Preserved)
@@ -101,9 +102,18 @@ export default function HomeClient() {
     void init();
   }, []);
 
-  const handleLogout = () => {
-    clearTokens();
-    setAuthStatus(false);
+  const handleLogout = async () => {
+    const refreshToken = getRefreshToken();
+    try {
+      if (refreshToken) {
+        await authApi.logout({ refresh_token: refreshToken });
+      }
+    } catch {
+      // Graceful fallback: always clear local tokens even if server logout fails
+    } finally {
+      clearTokens();
+      setAuthStatus(false);
+    }
   };
 
   // Quick Action List (Target URLs mapped to requested paths)

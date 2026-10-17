@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
 from app.models.chat_models import ChatMessage, ChatSession
+from app.services.chat_history_service import chat_history_service
 from app.services.llm_providers import (
     GEMINI_QUOTA_EXHAUSTED_MESSAGE,
     LLMProviderError,
@@ -183,22 +184,16 @@ class ChatService:
         question: str,
         context_str: str,
     ) -> str:
-        history_items: list[str] = []
-        history_tokens = 0
-        max_history_tokens = (
-            settings.chat_max_tokens
-            - self._count_tokens(question)
-            - self._count_tokens(context_str)
-            - 200
+        reserved_tokens = (
+            self._count_tokens(question) + self._count_tokens(context_str) + 200
         )
-        for msg in reversed(past_messages):
-            msg_str = f"{msg.role.capitalize()}: {msg.content}\n"
-            msg_tok = self._count_tokens(msg_str)
-            if history_tokens + msg_tok > max_history_tokens:
-                break
-            history_items.insert(0, msg_str)
-            history_tokens += msg_tok
-        return "".join(history_items)
+        trimmed = chat_history_service.trim_history(
+            messages=past_messages,
+            max_turns=settings.chat_max_history,
+            max_tokens=settings.chat_max_tokens,
+            reserved_tokens=reserved_tokens,
+        )
+        return chat_history_service.format_history_for_prompt(trimmed, style="chat")
 
     async def execute_chat_stream(
         self,
@@ -263,17 +258,21 @@ class ChatService:
         yield f"event: citations\ndata: {json.dumps(citations)}\n\n"
 
         # 4. Fetch Message history for context memory budgeting
-        stmt = (
-            select(ChatMessage)
-            .where(ChatMessage.session_id == session_id, ChatMessage.id != user_msg.id)
-            .order_by(ChatMessage.created_at.desc())
-            .limit(settings.chat_max_history)
+        reserved_tokens = (
+            self._count_tokens(question) + self._count_tokens(context_str) + 200
         )
-        history_res = await db.execute(stmt)
-        past_messages = list(history_res.scalars().all())
-        past_messages.reverse()  # chronological order
-
-        history_str = self._assemble_history_str(past_messages, question, context_str)
+        past_messages = await chat_history_service.get_bounded_history_for_session(
+            db=db,
+            session_id=session_id,
+            user_id=user_id,
+            exclude_message_id=user_msg.id,
+            max_turns=settings.chat_max_history,
+            max_tokens=settings.chat_max_tokens,
+            reserved_tokens=reserved_tokens,
+        )
+        history_str = chat_history_service.format_history_for_prompt(
+            past_messages, style="chat"
+        )
 
         # 5. Prompt assembly
         system_prompt = (

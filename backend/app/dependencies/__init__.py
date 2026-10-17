@@ -19,10 +19,12 @@ Usage in endpoints:
 
 from __future__ import annotations
 
+import uuid
 from typing import Annotated
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ForbiddenException, UnauthorizedException
@@ -30,6 +32,7 @@ from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.enums import UserRole
 from app.models.user import User
+from app.services.token_revocation_service import token_revocation_service
 from app.services.user_service import get_user_by_id
 
 # =============================================================================
@@ -64,10 +67,11 @@ async def get_current_user(
     Steps:
       1. Extract Bearer token from the ``Authorization`` header.
       2. Decode and validate the JWT (signature + expiry + type).
-      3. Load the user from the database by the ``sub`` (UUID) claim.
+      3. Verify the token's family has not been revoked (theft/replay detection or logout).
+      4. Load the user from the database by the ``sub`` (UUID) claim.
 
     Raises:
-        UnauthorizedException: If the token is missing, invalid, or the
+        UnauthorizedException: If the token is missing, invalid, revoked, or the
                                user no longer exists in the database.
     """
     if credentials is None:
@@ -78,6 +82,40 @@ async def get_current_user(
 
     # Decode and validate the JWT.
     payload = decode_token(credentials.credentials, expected_type="access")
+
+    # Immediate access-token revocation check for refresh-token family
+    family_id_raw = payload.get("family_id") or payload.get("fid")
+    if family_id_raw is not None:
+        try:
+            family_uuid = (
+                family_id_raw
+                if isinstance(family_id_raw, uuid.UUID)
+                else uuid.UUID(str(family_id_raw))
+            )
+        except (ValueError, TypeError):
+            logger.warning(
+                "Access token contains malformed family_id claim",
+                extra={"user_id": payload.get("sub")},
+            )
+            raise UnauthorizedException(message="Invalid token claims.")
+
+        is_revoked = await token_revocation_service.is_family_revoked(
+            family_id=family_uuid,
+            db=db,
+        )
+        if is_revoked:
+            logger.warning(
+                "Rejected access token belonging to revoked token family",
+                extra={
+                    "log_type": "security_audit",
+                    "event": "revoked_token_presented",
+                    "user_id": payload.get("sub"),
+                    "family_id": str(family_uuid),
+                },
+            )
+            raise UnauthorizedException(
+                message="Session has been revoked. Please log in again.",
+            )
 
     # Load the user from the database.
     try:
@@ -132,6 +170,21 @@ async def admin_required(
     return current_user
 
 
+async def get_optional_current_user(
+    credentials: BearerCredentials,
+    db: DBSession,
+) -> User | None:
+    """
+    Resolve the authenticated user if a Bearer token is provided.
+
+    Returns None if no Authorization header is present (e.g. browser redirects).
+    Raises UnauthorizedException if an Authorization header is provided but invalid/revoked.
+    """
+    if credentials is None:
+        return None
+    return await get_current_user(credentials=credentials, db=db)
+
+
 # =============================================================================
 # Convenience Type Aliases (for clean endpoint signatures)
 # =============================================================================
@@ -139,15 +192,19 @@ async def admin_required(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 ActiveUser = Annotated[User, Depends(get_current_active_user)]
 AdminUser = Annotated[User, Depends(admin_required)]
+OptionalUser = Annotated[User | None, Depends(get_optional_current_user)]
 
 
 __all__ = [
     "get_db",
     "get_current_user",
     "get_current_active_user",
+    "get_optional_current_user",
     "admin_required",
     "DBSession",
     "CurrentUser",
     "ActiveUser",
     "AdminUser",
+    "OptionalUser",
 ]
+

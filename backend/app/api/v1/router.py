@@ -19,6 +19,8 @@ from app.api.v1.endpoints.dashboard import router as dashboard_router
 from app.api.v1.endpoints.documents import router as documents_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.jobs import router as jobs_router
+from app.api.v1.endpoints.memories import router as memories_router
+from app.api.v1.endpoints.oauth import router as oauth_router
 from app.api.v1.endpoints.rag import router as rag_router
 from app.api.v1.endpoints.root import router as root_router
 from app.api.v1.endpoints.search import router as search_router
@@ -58,3 +60,10 @@ api_v1_router.include_router(agent_router, prefix="/agent", tags=["agent"])
 
 # ── Phase 12: Workspace Dashboard ────────────────────────────────────────────
 api_v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
+
+# ── Phase 5.3: Persistent User Memories ───────────────────────────────────────
+api_v1_router.include_router(memories_router, prefix="/memories", tags=["memories"])
+
+# ── Phase 5.6: OAuth Credential Vault & Connected Apps ────────────────────────
+api_v1_router.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
+

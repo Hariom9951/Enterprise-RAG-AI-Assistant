@@ -20,6 +20,10 @@ export interface TokenResponse {
   expires_in: number;
 }
 
+export interface MessageResponse {
+  message: string;
+}
+
 export interface UserResponse {
   id: string;
   full_name: string;
@@ -156,6 +160,40 @@ export interface SearchStatisticsResponse {
 
 
 
+export interface OAuthAuthorizeResponse {
+  authorization_url: string;
+  provider: string;
+  state: string;
+}
+
+export interface OAuthCallbackResponse {
+  success: boolean;
+  provider: string;
+  message: string;
+  redirect_url: string;
+}
+
+export interface OAuthConnectionMetadata {
+  id: string;
+  provider: string;
+  scopes: string[];
+  expires_at: string | null;
+  connection_status: "connected" | "expired" | "revoked";
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface OAuthConnectionStatusResponse {
+  connections: OAuthConnectionMetadata[];
+  total: number;
+}
+
+export interface OAuthDisconnectResponse {
+  success: boolean;
+  provider: string;
+  message: string;
+}
+
 export interface ApiError {
   error: {
     code: string;
@@ -163,6 +201,8 @@ export interface ApiError {
     detail: unknown;
   };
 }
+
+export { getApiErrorMessage } from "./apiErrors";
 
 // =============================================================================
 // Request Helpers
@@ -237,6 +277,13 @@ export const authApi = {
     request<TokenResponse>("/auth/refresh", {
       method: "POST",
       body: JSON.stringify({ refresh_token: refreshToken }),
+    }),
+
+  /** Revoke a refresh token and invalidate its session family server-side. */
+  logout: (payload: { refresh_token?: string | null } = {}): Promise<MessageResponse> =>
+    request<MessageResponse>("/auth/logout", {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
 };
 
@@ -411,11 +458,17 @@ export interface CitationItem {
   chunk_id: string;
   document_id: string;
   document_title: string;
-  page_number: number;
-  section_title: string | null;
+  page_number?: number | null;
+  section_title?: string | null;
   text: string;
   score: number;
+  provider?: string;
+  source_url?: string | null;
+  is_user_memory?: boolean;
+  provenance?: string;
+  label?: string;
 }
+
 
 export interface RAGChunkItem {
   chunk_id: string;
@@ -628,5 +681,135 @@ export const dashboardApi = {
   getStatistics: (): Promise<DashboardData> =>
     request<DashboardData>("/dashboard/statistics"),
 };
+
+// =============================================================================
+// User Memory API (Phase 5.3)
+// =============================================================================
+
+export type MemoryType = "preference" | "fact" | "goal" | "context";
+export type MemoryProvenance = "user_explicit" | "agent_extracted" | "system";
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface UserMemoryItem {
+  id: string;
+  user_id: string;
+  content: string;
+  memory_type: MemoryType;
+  provenance: MemoryProvenance;
+  confidence_score: number | null;
+  is_active: boolean;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserMemoryCreatePayload {
+  content: string;
+  memory_type: MemoryType;
+}
+
+export interface UserMemoryUpdatePayload {
+  content?: string;
+  memory_type?: MemoryType;
+}
+
+export interface UserMemorySearchResponse {
+  items: UserMemoryItem[];
+  query: string;
+  total: number;
+  disclaimer?: string;
+}
+
+export const memoryApi = {
+  /** List active memories with optional type filter and pagination. */
+  list: (params?: {
+    memory_type?: MemoryType;
+    page?: number;
+    page_size?: number;
+  }): Promise<PaginatedResponse<UserMemoryItem>> => {
+    const q = new URLSearchParams();
+    if (params?.memory_type) q.append("memory_type", params.memory_type);
+    if (params?.page) q.append("page", String(params.page));
+    if (params?.page_size) q.append("page_size", String(params.page_size));
+    const qs = q.toString();
+    return request<PaginatedResponse<UserMemoryItem>>(`/memories${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Create an explicit user memory. */
+  create: (payload: UserMemoryCreatePayload): Promise<UserMemoryItem> =>
+    request<UserMemoryItem>("/memories", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /** Get an individual active memory by ID. */
+  get: (memoryId: string): Promise<UserMemoryItem> =>
+    request<UserMemoryItem>(`/memories/${memoryId}`),
+
+  /** Update an existing active memory. */
+  update: (memoryId: string, payload: UserMemoryUpdatePayload): Promise<UserMemoryItem> =>
+    request<UserMemoryItem>(`/memories/${memoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  /** Search memories via literal keyword matching (up to 5 results). */
+  search: (query: string, limit: number = 5): Promise<UserMemorySearchResponse> => {
+    const q = new URLSearchParams({ q: query, limit: String(limit) });
+    return request<UserMemorySearchResponse>(`/memories/search?${q.toString()}`);
+  },
+
+  /** Soft-delete a memory (idempotent, 204 No Content). */
+  delete: (memoryId: string): Promise<void> =>
+    request<void>(`/memories/${memoryId}`, {
+      method: "DELETE",
+    }),
+};
+
+// =============================================================================
+// OAuth Connected Apps API
+// =============================================================================
+
+export const oauthApi = {
+  /** List all personal application connections for the authenticated user. */
+  listConnections: (): Promise<OAuthConnectionStatusResponse> =>
+    request<OAuthConnectionStatusResponse>("/oauth/connections"),
+
+  /** Request authorization URL to initiate third-party OAuth flow. */
+  getAuthorizeUrl: (
+    provider: string,
+    frontendRedirectUrl: string = "/settings"
+  ): Promise<OAuthAuthorizeResponse> => {
+    const q = new URLSearchParams({
+      frontend_redirect_url: frontendRedirectUrl,
+      redirect: "false",
+    });
+    return request<OAuthAuthorizeResponse>(`/oauth/${provider}/authorize?${q.toString()}`);
+  },
+
+  /** Complete OAuth flow via authenticated POST with authorization code and state. */
+  completeCallback: (
+    provider: string,
+    payload: { code: string; state: string }
+  ): Promise<OAuthCallbackResponse> =>
+    request<OAuthCallbackResponse>(`/oauth/${provider}/callback`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /** Revoke stored credentials and mark the connection as revoked. */
+  disconnect: (provider: string): Promise<OAuthDisconnectResponse> =>
+    request<OAuthDisconnectResponse>(`/oauth/${provider}/disconnect`, {
+      method: "POST",
+    }),
+};
+
 
 

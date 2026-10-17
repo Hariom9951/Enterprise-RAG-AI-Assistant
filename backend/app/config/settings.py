@@ -11,9 +11,9 @@ Uses pydantic-settings to:
 """
 
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -168,6 +168,55 @@ class Settings(BaseSettings):
         ge=1,
         description="JWT refresh token TTL in days.",
     )
+    encryption_master_key: str | None = Field(
+        default=None,
+        description="Dedicated 32-byte master encryption key for OAuth Credential Vault (64 hex characters or 32 raw bytes).",
+    )
+    oauth_redirect_base_url: str = Field(
+        default="http://localhost:8000",
+        description="Base URL for OAuth redirect callbacks (e.g. https://api.example.com).",
+    )
+    oauth_state_ttl_seconds: int = Field(
+        default=600,
+        ge=60,
+        le=3600,
+        description="TTL for ephemeral OAuth state and PKCE verifier parameters in seconds.",
+    )
+    # Google OAuth
+    google_client_id: str | None = Field(
+        default=None,
+        description="Google OAuth 2.0 Client ID for Gmail and Drive personal app integration.",
+    )
+    google_client_secret: SecretStr | None = Field(
+        default=None,
+        description="Google OAuth 2.0 Client Secret.",
+    )
+    # GitHub OAuth
+    github_client_id: str | None = Field(
+        default=None,
+        description="GitHub OAuth App / GitHub App Client ID.",
+    )
+    github_client_secret: SecretStr | None = Field(
+        default=None,
+        description="GitHub OAuth Client Secret.",
+    )
+    github_oauth_scopes: str = Field(
+        default="repo",
+        description=(
+            "Configured OAuth scopes to request from GitHub (space- or comma-separated). "
+            "Defaults to 'repo' for full repository/issue read access required by GitHubSearchTool. "
+            "Use 'public_repo' or fine-grained GitHub App permissions for reduced privilege."
+        ),
+    )
+    # LinkedIn OAuth
+    linkedin_client_id: str | None = Field(
+        default=None,
+        description="LinkedIn OAuth 2.0 Client ID for profile tools.",
+    )
+    linkedin_client_secret: SecretStr | None = Field(
+        default=None,
+        description="LinkedIn OAuth Client Secret.",
+    )
 
     # -------------------------------------------------------------------------
     # Phase 3: Document Management
@@ -280,6 +329,11 @@ class Settings(BaseSettings):
         ge=1,
         description="Maximum conversational query rounds to preserve in short-term history memory.",
     )
+    chat_max_history_turns: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum complete conversational turns to preserve in short-term history memory.",
+    )
     chat_max_tokens: int = Field(
         default=4000,
         ge=500,
@@ -321,6 +375,22 @@ class Settings(BaseSettings):
         le=10,
         description="Maximum retry attempts per tool call on transient failures.",
     )
+    enable_langgraph: bool = Field(
+        default=False,
+        description="Enable LangGraph-based agent runner. When False, legacy runner is used.",
+    )
+    agent_max_reformulations: int = Field(
+        default=1,
+        ge=0,
+        le=3,
+        description="Maximum query reformulations allowed in adaptive agentic research.",
+    )
+    agent_min_relevance_threshold: float = Field(
+        default=0.50,
+        ge=0.0,
+        le=1.0,
+        description="Minimum normalized similarity score floor for evaluating sufficient evidence.",
+    )
 
     # -------------------------------------------------------------------------
     # Phase 12: Production Hardening, Caching, & Monitoring
@@ -344,6 +414,13 @@ class Settings(BaseSettings):
         ge=1,
         description="Rate limit evaluation sliding window in seconds.",
     )
+    trusted_proxies: list[str] = Field(
+        default=[],
+        description=(
+            "List of trusted reverse proxy IP addresses or CIDR blocks (e.g. ['127.0.0.1', '10.0.0.0/8']). "
+            "If empty, forwarded headers (X-Forwarded-For) are ignored and direct socket IP is used."
+        ),
+    )
     max_request_body_size_bytes: int = Field(
         default=2097152,  # 2MB
         ge=1024,
@@ -364,7 +441,11 @@ class Settings(BaseSettings):
     # Validators
     # -------------------------------------------------------------------------
     @field_validator(
-        "allowed_origins", "allowed_methods", "allowed_headers", mode="before"
+        "allowed_origins",
+        "allowed_methods",
+        "allowed_headers",
+        "trusted_proxies",
+        mode="before",
     )
     @classmethod
     def parse_comma_separated(cls, value: str | list) -> list[str]:
@@ -373,39 +454,118 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @field_validator("secret_key")
-    @classmethod
-    def validate_secret_key(cls, value: str, info: Any) -> str:
-        """Prevent starting in production if the default secret key is used."""
-        lowered = value.lower()
-        is_placeholder = (
-            "change-me" in lowered
-            or "changeme" in lowered
-            or "placeholder" in lowered
-            or value in {"secret", "default", "testsecret", "123456"}
-        )
-        if is_placeholder:
-            import os
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Self:
+        """
+        Validate security constraints in production.
 
-            env = os.environ.get("ENVIRONMENT", "development").lower()
-            if env == "production":
+        Enforces:
+        1. SECRET_KEY cannot be missing, empty, default/placeholder, or shorter than 32 chars in production.
+        2. Wildcard ALLOWED_ORIGINS ('*') is strictly forbidden when allow_credentials=True in production.
+        """
+        lowered_key = (self.secret_key or "").lower().strip()
+        is_placeholder = (
+            not lowered_key
+            or "change-me" in lowered_key
+            or "changeme" in lowered_key
+            or "placeholder" in lowered_key
+            or lowered_key in {
+                "secret",
+                "default",
+                "testsecret",
+                "123456",
+                "admin",
+                "password",
+                "secretkey",
+                "insecure",
+            }
+        )
+
+        if self.environment == "production":
+            if not self.secret_key or not self.secret_key.strip():
+                raise ValueError(
+                    "SECRET_KEY must be set in production and cannot be empty."
+                )
+            if is_placeholder:
                 raise ValueError(
                     "SECRET_KEY cannot be a default or placeholder value in production. "
-                    "You MUST set a strong secret key using ENVIRONMENT variable."
+                    "You MUST set a strong, cryptographically secure secret key."
                 )
-            else:
+            if len(self.secret_key.strip()) < 32:
+                raise ValueError(
+                    "SECRET_KEY must be at least 32 characters long in production."
+                )
+
+            if self.allow_credentials:
+                origins = self.allowed_origins
+                has_wildcard = False
+                if isinstance(origins, list):
+                    has_wildcard = any(o.strip() == "*" for o in origins)
+                elif isinstance(origins, str):
+                    has_wildcard = origins.strip() == "*"
+
+                if has_wildcard:
+                    raise ValueError(
+                        "Wildcard CORS origin ('*') is forbidden when allow_credentials=True in production. "
+                        "You MUST specify explicit allowed origins (e.g. 'https://app.example.com')."
+                    )
+
+            # ENCRYPTION_MASTER_KEY validation in production
+            if not self.encryption_master_key or not self.encryption_master_key.strip():
+                raise ValueError(
+                    "ENCRYPTION_MASTER_KEY must be set in production and cannot be empty."
+                )
+            cleaned_enc = self.encryption_master_key.strip()
+            if len(cleaned_enc) != 64:
+                raise ValueError(
+                    "ENCRYPTION_MASTER_KEY must be exactly 64 hexadecimal characters representing 32 bytes in production."
+                )
+            try:
+                bytes.fromhex(cleaned_enc)
+            except ValueError:
+                raise ValueError(
+                    "ENCRYPTION_MASTER_KEY must be a valid hex-encoded string in production."
+                )
+            lowered_enc = cleaned_enc.lower()
+            if (
+                len(set(lowered_enc)) <= 1
+                or "change" in lowered_enc
+                or "placeholder" in lowered_enc
+                or "secret" in lowered_enc
+            ):
+                raise ValueError(
+                    "ENCRYPTION_MASTER_KEY cannot be a default or placeholder value in production."
+                )
+        else:
+            if is_placeholder:
                 import warnings
 
                 warnings.warn(
                     "SECRET_KEY is set to an insecure placeholder value. "
                     "This is insecure and MUST be changed before any production deployment.",
+                    UserWarning,
                     stacklevel=2,
                 )
-        return value
+
+        return self
 
     # -------------------------------------------------------------------------
-    # Computed Properties
+    # Computed Properties & Helpers
     # -------------------------------------------------------------------------
+    def get_oauth_callback_url(self, provider: str) -> str:
+        """Return the canonical OAuth callback URL for a given provider."""
+        norm_provider = provider.lower().strip()
+        base = self.oauth_redirect_base_url.rstrip("/")
+        prefix = self.api_v1_prefix.rstrip("/")
+        return f"{base}{prefix}/oauth/{norm_provider}/callback"
+
+    @property
+    def github_scopes_list(self) -> list[str]:
+        """Parse configured GitHub scopes into a clean list of scope names."""
+        raw = self.github_oauth_scopes.replace(",", " ")
+        scopes = [s.strip() for s in raw.split() if s.strip()]
+        return scopes if scopes else ["repo"]
+
     @property
     def is_production(self) -> bool:
         """True when running in the production environment."""

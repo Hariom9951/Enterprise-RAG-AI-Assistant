@@ -37,6 +37,13 @@ from app.tasks.celery_app import celery_app
 # without requiring a running Redis message broker.
 celery_app.conf.task_always_eager = True
 
+# Provide a standard 32-byte hex test master key if not already defined,
+# ensuring existing non-vault tests that exercise production Settings do not fail on missing key.
+_os.environ.setdefault(
+    "ENCRYPTION_MASTER_KEY",
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+)
+
 # =============================================================================
 # Test Database — file-based SQLite (function scoped for isolation)
 # =============================================================================

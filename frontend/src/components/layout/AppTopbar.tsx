@@ -13,8 +13,8 @@ import {
   Shield,
   Menu
 } from "lucide-react";
-import { userApi, UserResponse } from "@/lib/api";
-import { clearTokens } from "@/lib/auth";
+import { userApi, authApi, UserResponse } from "@/lib/api";
+import { clearTokens, getRefreshToken } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 
 interface AppTopbarProps {
@@ -49,9 +49,18 @@ export default function AppTopbar({
     };
   }, []);
 
-  const handleLogout = () => {
-    clearTokens();
-    router.push("/login");
+  const handleLogout = async () => {
+    const refreshToken = getRefreshToken();
+    try {
+      if (refreshToken) {
+        await authApi.logout({ refresh_token: refreshToken });
+      }
+    } catch {
+      // Graceful fallback: always clear local tokens even if server logout fails
+    } finally {
+      clearTokens();
+      router.push("/login");
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

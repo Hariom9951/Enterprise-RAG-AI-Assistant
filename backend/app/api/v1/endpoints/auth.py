@@ -14,15 +14,18 @@ from fastapi import APIRouter, status
 from app.dependencies import DBSession
 from app.schemas.auth import (
     LoginRequest,
+    LogoutRequest,
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
     UserResponse,
 )
+from app.schemas.common import MessageResponse
 from app.services.auth_service import (
     authenticate_user,
     refresh_access_token,
     register_user,
+    revoke_refresh_token,
 )
 
 router = APIRouter()
@@ -102,8 +105,8 @@ async def login(
     summary="Refresh access token",
     description=(
         "Exchange a valid refresh token for a new access token. "
-        "Token rotation is applied — a new refresh token is also issued, "
-        "invalidating the previous one on next use."
+        "Atomic single-use token rotation is applied — the previous refresh token is "
+        "consumed and invalidated immediately."
     ),
     tags=["auth"],
 )
@@ -114,7 +117,38 @@ async def refresh(
     """
     **Obtain a new access token using a refresh token.**
 
-    - Refresh tokens are long-lived but single-use (token rotation).
-    - Phase 3 will add a Redis-backed blocklist for revocation.
+    - Refresh tokens are single-use (atomic token rotation).
+    - Replay of an already-consumed token triggers token-theft revocation of the entire family.
     """
     return await refresh_access_token(db, payload)
+
+
+# =============================================================================
+# Logout
+# =============================================================================
+
+
+@router.post(
+    "/logout",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Logout user session",
+    description=(
+        "Revoke the supplied refresh token and invalidate its session family server-side. "
+        "Safe and idempotent against already-revoked, expired, or malformed tokens."
+    ),
+    tags=["auth"],
+)
+async def logout(
+    payload: LogoutRequest,
+    db: DBSession,
+) -> MessageResponse:
+    """
+    **Logout user session and revoke refresh tokens.**
+
+    - Marks the session's token family as revoked in PostgreSQL.
+    - Subsequent refresh attempts with the token will fail.
+    - Always returns 200 OK to allow clean client-side logout.
+    """
+    await revoke_refresh_token(db, payload)
+    return MessageResponse(message="Successfully logged out.")

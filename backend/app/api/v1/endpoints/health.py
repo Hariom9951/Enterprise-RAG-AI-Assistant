@@ -170,6 +170,14 @@ async def metrics_endpoint() -> Response:
         f"latency_agent_ms {avg_agent:.2f}",
     ]
 
+    # 5. Agent Execution Observability Metrics
+    try:
+        from app.agents.observability import agent_metrics
+
+        lines.extend(agent_metrics.generate_prometheus_lines())
+    except Exception:
+        pass
+
     content = "\n".join(lines) + "\n"
     return Response(
         content=content, media_type="text/plain; version=0.0.4; charset=utf-8"

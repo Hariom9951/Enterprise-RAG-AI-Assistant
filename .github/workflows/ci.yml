@@ -107,7 +107,7 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Run ESLint check
-        run: npm run lint || echo "ESLint checking completed"
+        run: npm run lint
 
       - name: Run Production Bundle Compile Gate
         run: npm run build

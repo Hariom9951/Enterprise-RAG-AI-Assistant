@@ -11,6 +11,7 @@ No business logic lives here — just pure crypto functions.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -100,6 +101,7 @@ def _create_token(
 def create_access_token(
     subject: str,
     extra_claims: dict[str, Any] | None = None,
+    family_id: str | uuid.UUID | None = None,
 ) -> str:
     """
     Create a short-lived JWT access token.
@@ -107,11 +109,15 @@ def create_access_token(
     Args:
         subject:      The ``sub`` claim — typically the user's UUID as a string.
         extra_claims: Optional additional claims (e.g. role, email).
+        family_id:    Optional refresh-token family UUID linking this access token
+                      to its parent session for immediate revocation capability.
 
     Returns:
         Signed JWT access token string.
     """
     data: dict[str, Any] = {"sub": subject}
+    if family_id is not None:
+        data["family_id"] = str(family_id)
     if extra_claims:
         data.update(extra_claims)
 
@@ -122,21 +128,25 @@ def create_access_token(
     )
 
 
-def create_refresh_token(subject: str) -> str:
+def create_refresh_token(subject: str, jti: str | None = None) -> str:
     """
-    Create a long-lived JWT refresh token.
+    Create a long-lived JWT refresh token with a unique jti identifier.
 
-    Refresh tokens contain only the ``sub`` (user ID) and ``type`` claims
-    to minimise the blast radius if one is compromised.
+    Refresh tokens contain the ``sub`` (user ID), ``jti`` (unique token ID),
+    and ``type`` claims to allow token-level tracking and revocation while
+    minimising the blast radius if one is compromised.
 
     Args:
         subject: The user's UUID as a string.
+        jti:     Optional unique JWT ID (UUID4 string). If not provided,
+                 a fresh cryptographically secure UUID4 is generated.
 
     Returns:
         Signed JWT refresh token string.
     """
+    token_jti = jti or str(uuid.uuid4())
     return _create_token(
-        data={"sub": subject},
+        data={"sub": subject, "jti": token_jti},
         expires_delta=timedelta(days=settings.refresh_token_expire_days),
         token_type="refresh",
     )

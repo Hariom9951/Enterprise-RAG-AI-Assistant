@@ -7,6 +7,7 @@ Fails open (logs warning but allows requests) if Redis is down to preserve avail
 
 from __future__ import annotations
 
+import ipaddress
 import time
 
 from fastapi import Request, Response, status
@@ -17,6 +18,89 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.types import ASGIApp
 
 from app.config.settings import settings
+
+
+def is_ip_in_trusted_proxies(ip_str: str, trusted_proxies: list[str]) -> bool:
+    """Check if an IP string matches any trusted proxy IP or CIDR network."""
+    if not ip_str or not trusted_proxies:
+        return False
+    try:
+        ip = ipaddress.ip_address(ip_str.strip())
+    except ValueError:
+        return False
+
+    for proxy_pattern in trusted_proxies:
+        pattern = proxy_pattern.strip()
+        if not pattern:
+            continue
+        try:
+            if "/" in pattern:
+                network = ipaddress.ip_network(pattern, strict=False)
+                if ip in network:
+                    return True
+            else:
+                trusted_ip = ipaddress.ip_address(pattern)
+                if ip == trusted_ip:
+                    return True
+        except ValueError:
+            continue
+    return False
+
+
+def get_client_ip(request: Request, trusted_proxies: list[str] | None = None) -> str:
+    """
+    Safely extract the real client IP address from the request.
+
+    Security constraints:
+    1. If request.client is None, returns 'unknown'.
+    2. Uses request.client.host as the immediate socket peer IP.
+    3. If trusted_proxies is empty or peer_ip is NOT a trusted proxy,
+       returns peer_ip. X-Forwarded-For headers are strictly IGNORED to prevent
+       arbitrary client IP spoofing from the public internet.
+    4. If peer_ip IS a trusted proxy:
+       Parses the X-Forwarded-For header and traverses IPs from right to left
+       (from the closest proxy toward the client). The first IP that is NOT in
+       trusted_proxies is returned as the real client IP.
+    5. If all IPs in X-Forwarded-For are trusted proxies, returns the leftmost valid IP.
+    6. If X-Forwarded-For is missing or contains only invalid IP strings,
+       safely falls back to peer_ip.
+    """
+    if not request.client or not request.client.host:
+        return "unknown"
+
+    peer_ip = request.client.host.strip()
+    if not trusted_proxies:
+        return peer_ip
+
+    if not is_ip_in_trusted_proxies(peer_ip, trusted_proxies):
+        return peer_ip
+
+    x_forwarded_for = request.headers.get("x-forwarded-for")
+    if not x_forwarded_for:
+        return peer_ip
+
+    raw_ips = [ip.strip() for ip in x_forwarded_for.split(",") if ip.strip()]
+    if not raw_ips:
+        return peer_ip
+
+    for ip in reversed(raw_ips):
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+
+        if not is_ip_in_trusted_proxies(ip, trusted_proxies):
+            return ip
+
+    # If all entries are in trusted_proxies, fallback to the leftmost valid IP
+    for ip in raw_ips:
+        try:
+            ipaddress.ip_address(ip)
+            return ip
+        except ValueError:
+            continue
+
+    return peer_ip
 
 
 class RateLimitingMiddleware(BaseHTTPMiddleware):
@@ -43,7 +127,7 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
         if is_ignored_path or settings.is_development:
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_client_ip(request, settings.trusted_proxies)
 
         try:
             r = self._get_redis()

@@ -100,8 +100,27 @@ async def _async_process_document(doc_id: uuid.UUID) -> dict[str, Any]:
         if not doc:
             raise ValueError(f"Document {doc_id} not found in database.")
 
-        if doc.processing_status == "PROCESSED":
-            return {"status": "already_processed", "doc_id": str(doc_id)}
+        if doc.processing_status == "COMPLETED":
+            from app.models.chunk import Chunk
+            from app.models.processed_document import ProcessedDocument
+
+            pd_result = await db.execute(
+                select(ProcessedDocument).where(ProcessedDocument.document_id == doc_id)
+            )
+            proc_doc = pd_result.scalar_one_or_none()
+
+            chunks_result = await db.execute(
+                select(Chunk).where(Chunk.document_id == doc_id)
+            )
+            chunks = list(chunks_result.scalars().all())
+            unembedded = [c for c in chunks if c.embedding is None]
+
+            if proc_doc and chunks and not unembedded:
+                logger.info(f"Document {doc_id} is already fully COMPLETED, skipping.")
+                return {"status": "already_processed", "doc_id": str(doc_id)}
+            logger.info(
+                f"Document {doc_id} was marked COMPLETED but has missing chunks/embeddings. Re-processing."
+            )
 
         # 2. Update status to PROCESSING
         doc.processing_status = "PROCESSING"
@@ -116,24 +135,32 @@ async def _async_process_document(doc_id: uuid.UUID) -> dict[str, Any]:
                 f"Physical file missing for document {doc_id} at {doc.storage_path}"
             )
 
-        # 4. Run the full extraction pipeline within the same session
-        await process_document_file(db, doc_id)
+        try:
+            # 4. Run the full extraction pipeline within the same session
+            await process_document_file(db, doc_id)
 
-        # 5. Semantic Chunking & Metadata Enrichment
-        from app.services.chunking_service import ChunkingService
+            # 5. Semantic Chunking & Metadata Enrichment
+            from app.services.chunking_service import ChunkingService
 
-        chunker = ChunkingService()
-        await chunker.chunk_document(db, doc_id)
+            chunker = ChunkingService()
+            await chunker.chunk_document(db, doc_id)
 
-        # 6. Vector Embedding Generation
-        from app.services.embedding_service import EmbeddingService
+            # 6. Vector Embedding Generation
+            from app.services.embedding_service import EmbeddingService
 
-        embedder = EmbeddingService()
-        await embedder.embed_document_chunks(db, doc_id)
+            embedder = EmbeddingService()
+            await embedder.embed_document_chunks(db, doc_id)
 
-        # Transition status to COMPLETED
-        doc.processing_status = "COMPLETED"
-        await db.commit()
+            # 7. Transition status to terminal COMPLETED
+            doc.processing_status = "COMPLETED"
+            await db.commit()
+        except Exception as stage_exc:
+            logger.error(
+                f"Failed during processing stages for document {doc_id}: {stage_exc}"
+            )
+            doc.processing_status = "FAILED"
+            await db.commit()
+            raise stage_exc
 
     logger.info(f"Finished processing and embedding document {doc_id} successfully.")
     return {"status": "success", "doc_id": str(doc_id)}

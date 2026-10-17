@@ -97,35 +97,35 @@ class ConversationHistoryTool(BaseTool):
                 metadata={"reason": "Session not found or access denied."},
             )
 
-        # Retrieve messages — most recent `limit` rows
-        msg_stmt = (
-            select(ChatMessage)
-            .where(ChatMessage.session_id == session_id)
-            .order_by(ChatMessage.created_at.desc())
-            .limit(limit)
+        # Retrieve bounded history using unified turn-preserving trimmer
+        from app.services.chat_history_service import chat_history_service
+
+        trimmed_messages = await chat_history_service.get_bounded_history_for_session(
+            db=db,
+            session_id=session_id,
+            user_id=user_id,
+            max_turns=limit,
         )
-        msg_res = await db.execute(msg_stmt)
-        # Reverse to chronological order
-        messages = list(reversed(msg_res.scalars().all()))
 
         output_messages = []
-        for msg in messages:
-            content = msg.content
+        for msg in trimmed_messages:
+            content = msg.get("content", "")
             if summarize and len(content) > 150:
                 content = content[:150].strip() + "…"
 
             entry: dict[str, Any] = {
-                "role": msg.role,
+                "role": msg.get("role", "user"),
                 "content": content,
-                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                "created_at": msg.get("created_at"),
             }
-            if not summarize and msg.citations:
-                entry["citations"] = msg.citations
+            if not summarize and msg.get("citations"):
+                entry["citations"] = msg.get("citations")
             output_messages.append(entry)
 
-        # Rough token estimate (4 chars ≈ 1 token)
-        total_chars = sum(len(m["content"]) for m in output_messages)
-        estimated_tokens = total_chars // 4
+        estimated_tokens = sum(
+            chat_history_service.estimate_tokens(f"{m['role']}: {m['content']}")
+            for m in output_messages
+        )
 
         return ToolResult(
             success=True,

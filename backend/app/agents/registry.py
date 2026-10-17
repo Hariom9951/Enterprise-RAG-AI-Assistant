@@ -118,6 +118,10 @@ class ToolRegistry:
 from app.agents.tools.citation import CitationTool  # noqa: E402
 from app.agents.tools.conversation_history import ConversationHistoryTool  # noqa: E402
 from app.agents.tools.document_lookup import DocumentLookupTool  # noqa: E402
+from app.agents.tools.github_tool import GitHubSearchTool  # noqa: E402
+from app.agents.tools.gmail_tool import GmailSearchTool  # noqa: E402
+from app.agents.tools.google_drive_tool import GoogleDriveSearchTool  # noqa: E402
+from app.agents.tools.linkedin_tool import LinkedInProfileTool  # noqa: E402
 from app.agents.tools.semantic_search import SemanticSearchTool  # noqa: E402
 
 _default_registry = ToolRegistry()
@@ -126,7 +130,17 @@ _default_registry.register(DocumentLookupTool())
 _default_registry.register(CitationTool())
 _default_registry.register(ConversationHistoryTool())
 
+# Phase 5.2 Active Personal-App Tools
+_default_registry.register(GmailSearchTool())
+_default_registry.register(GoogleDriveSearchTool())
+_default_registry.register(GitHubSearchTool())
+_default_registry.register(LinkedInProfileTool())
+# Note: NotionSearchTool and JiraSearchTool source files and tests are preserved
+# but deactivated from default registration per user requirements.
+
 
 def get_registry() -> ToolRegistry:
     """Return the application-wide default tool registry."""
     return _default_registry
+
+

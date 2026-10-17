@@ -1,0 +1,437 @@
+{
+  "schema_version": "1.0.0",
+  "run_timestamp": "2026-10-16T05:44:19.092826+00:00",
+  "environment": {
+    "execution_mode": "offline_synthetic_simulation",
+    "llm_mocked": true,
+    "embeddings_mocked": true,
+    "vector_db": "mocked_in_memory",
+    "persistence": "isolated_sqlite",
+    "external_network_calls": false,
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.12.4",
+    "disclaimer": "All benchmark metrics reflect controlled in-process execution using synthetic datasets, in-memory SQLite persistence, and mocked external dependencies (Gemini LLM, embedding APIs, Celery workers, and Redis broker). Measurements characterize computational logic, tokenization throughput, serialization overhead, and error-handling resilience, but do not represent production wide-area network latency or distributed cloud cluster capacity."
+  },
+  "overall_status": "passed",
+  "suites_executed": [
+    "ingestion",
+    "performance",
+    "quality",
+    "reliability"
+  ],
+  "suite_statuses": {
+    "quality": {
+      "status": "passed",
+      "duration_s": 0.3348,
+      "error": null,
+      "details": {}
+    },
+    "performance": {
+      "status": "passed",
+      "duration_s": 0.2851,
+      "error": null,
+      "details": {}
+    },
+    "ingestion": {
+      "status": "passed",
+      "duration_s": 0.9111,
+      "error": null,
+      "details": {}
+    },
+    "reliability": {
+      "status": "passed",
+      "duration_s": 0.0219,
+      "error": null,
+      "details": {}
+    }
+  },
+  "total_elapsed_s": 1.5981,
+  "measured_values": {
+    "quality": {
+      "dataset_version": "v1.0.0",
+      "total_cases": 10,
+      "retrieval_metrics": {
+        "evaluation_depths_k": [
+          1,
+          3,
+          5,
+          10
+        ],
+        "metrics": {
+          "precision@1": 0.8,
+          "recall@1": 0.545,
+          "hit_rate@1": 0.8,
+          "mrr@1": 0.8,
+          "precision@3": 0.5833,
+          "recall@3": 0.735,
+          "hit_rate@3": 0.8,
+          "mrr@3": 0.8,
+          "precision@5": 0.5633,
+          "recall@5": 0.8,
+          "hit_rate@5": 0.8,
+          "mrr@5": 0.8,
+          "precision@10": 0.5214,
+          "recall@10": 0.8,
+          "hit_rate@10": 0.8,
+          "mrr@10": 0.8,
+          "mrr": 0.8
+        }
+      },
+      "answer_quality": {
+        "citation_validity_rate": 1.0,
+        "abstention_accuracy": 1.0,
+        "lexical_grounding_heuristic": {
+          "average_grounding_ratio": 0.0,
+          "sample_cases_evaluated": 7,
+          "heuristic_disclaimer": "Lexical grounding heuristic measures content token overlap with cited evidence. It does not constitute mathematical proof of factual correctness."
+        }
+      },
+      "runner_comparison": {
+        "legacy": {
+          "precision@3": 0.5833,
+          "recall@3": 0.735,
+          "hit_rate@3": 0.8,
+          "mrr": 0.8,
+          "citation_validity_rate": 1.0,
+          "abstention_accuracy": 1.0,
+          "success_rate": 1.0,
+          "avg_latency_ms": 0.0
+        },
+        "langgraph": {
+          "precision@3": 0.5833,
+          "recall@3": 0.735,
+          "hit_rate@3": 0.8,
+          "mrr": 0.8,
+          "citation_validity_rate": 1.0,
+          "abstention_accuracy": 1.0,
+          "success_rate": 1.0,
+          "avg_latency_ms": 23.8
+        },
+        "summary": {
+          "total_evaluated": 10,
+          "identical_behavior_cases": 9,
+          "divergent_cases": 1,
+          "divergence_details": [
+            {
+              "case_id": "case-005-insufficient-evidence",
+              "divergences": [
+                "Tool call count divergence: legacy=1, langgraph=2"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "performance": {
+      "concurrency_benchmark": {
+        "benchmark_name": "simulated_rag_concurrency",
+        "concurrency_levels": [
+          1,
+          5,
+          10,
+          20
+        ],
+        "measurement_type": "in_process_simulated",
+        "environment_disclaimer": "Measurements reflect simulated in-process execution with mocked model responses and local persistence. They do not reflect real network latencies, distributed queue delays, or external Gemini API production throughput.",
+        "total_elapsed_s": 0.1324,
+        "results_by_concurrency": {
+          "1": {
+            "total_requests": 8,
+            "completed_requests": 8,
+            "failed_requests": 0,
+            "error_rate": 0.0,
+            "elapsed_time_s": 0.083,
+            "requests_per_second": 96.42,
+            "min_ms": 2.759,
+            "p50_ms": 11.515,
+            "p90_ms": 15.7199,
+            "p95_ms": 15.7237,
+            "p99_ms": 15.7267,
+            "max_ms": 15.7275,
+            "mean_ms": 10.2286,
+            "measurement_type": "in_process_simulated",
+            "environment_disclaimer": "Measurements reflect simulated in-process execution with mocked model responses and local persistence. They do not reflect real network latencies, distributed queue delays, or external Gemini API production throughput.",
+            "error_counts": {}
+          },
+          "5": {
+            "total_requests": 8,
+            "completed_requests": 8,
+            "failed_requests": 0,
+            "error_rate": 0.0,
+            "elapsed_time_s": 0.0309,
+            "requests_per_second": 258.7,
+            "min_ms": 13.9378,
+            "p50_ms": 13.9706,
+            "p90_ms": 16.7393,
+            "p95_ms": 16.7401,
+            "p99_ms": 16.7407,
+            "max_ms": 16.7408,
+            "mean_ms": 14.9974,
+            "measurement_type": "in_process_simulated",
+            "environment_disclaimer": "Measurements reflect simulated in-process execution with mocked model responses and local persistence. They do not reflect real network latencies, distributed queue delays, or external Gemini API production throughput.",
+            "error_counts": {}
+          },
+          "10": {
+            "total_requests": 8,
+            "completed_requests": 8,
+            "failed_requests": 0,
+            "error_rate": 0.0,
+            "elapsed_time_s": 0.0023,
+            "requests_per_second": 3450.51,
+            "min_ms": 2.1394,
+            "p50_ms": 2.1574,
+            "p90_ms": 2.1995,
+            "p95_ms": 2.2005,
+            "p99_ms": 2.2013,
+            "max_ms": 2.2015,
+            "mean_ms": 2.1666,
+            "measurement_type": "in_process_simulated",
+            "environment_disclaimer": "Measurements reflect simulated in-process execution with mocked model responses and local persistence. They do not reflect real network latencies, distributed queue delays, or external Gemini API production throughput.",
+            "error_counts": {}
+          },
+          "20": {
+            "total_requests": 8,
+            "completed_requests": 8,
+            "failed_requests": 0,
+            "error_rate": 0.0,
+            "elapsed_time_s": 0.0152,
+            "requests_per_second": 525.79,
+            "min_ms": 15.0064,
+            "p50_ms": 15.0226,
+            "p90_ms": 15.0672,
+            "p95_ms": 15.0697,
+            "p99_ms": 15.0717,
+            "max_ms": 15.0722,
+            "mean_ms": 15.0335,
+            "measurement_type": "in_process_simulated",
+            "environment_disclaimer": "Measurements reflect simulated in-process execution with mocked model responses and local persistence. They do not reflect real network latencies, distributed queue delays, or external Gemini API production throughput.",
+            "error_counts": {}
+          }
+        }
+      },
+      "agent_concurrency_sample": {
+        "benchmark_name": "agent_langgraph_concurrency",
+        "concurrency_levels": [
+          1,
+          2
+        ],
+        "measurement_type": "in_process_simulated",
+        "environment_disclaimer": "Measurements reflect simulated in-process execution with mocked model responses and local persistence. They do not reflect real network latencies, distributed queue delays, or external Gemini API production throughput.",
+        "total_elapsed_s": 0.1232,
+        "results_by_concurrency": {
+          "1": {
+            "total_requests": 2,
+            "completed_requests": 2,
+            "failed_requests": 0,
+            "error_rate": 0.0,
+            "elapsed_time_s": 0.0655,
+            "requests_per_second": 30.54,
+            "min_ms": 32.4928,
+            "p50_ms": 32.6905,
+            "p90_ms": 32.8487,
+            "p95_ms": 32.8684,
+            "p99_ms": 32.8842,
+            "max_ms": 32.8882,
+            "mean_ms": 32.6905,
+            "measurement_type": "in_process_simulated",
+            "environment_disclaimer": "Measurements reflect simulated in-process execution with mocked model responses and local persistence. They do not reflect real network latencies, distributed queue delays, or external Gemini API production throughput.",
+            "error_counts": {}
+          },
+          "2": {
+            "total_requests": 2,
+            "completed_requests": 2,
+            "failed_requests": 0,
+            "error_rate": 0.0,
+            "elapsed_time_s": 0.0576,
+            "requests_per_second": 34.71,
+            "min_ms": 39.2889,
+            "p50_ms": 48.4035,
+            "p90_ms": 55.6952,
+            "p95_ms": 56.6066,
+            "p99_ms": 57.3358,
+            "max_ms": 57.5181,
+            "mean_ms": 48.4035,
+            "measurement_type": "in_process_simulated",
+            "environment_disclaimer": "Measurements reflect simulated in-process execution with mocked model responses and local persistence. They do not reflect real network latencies, distributed queue delays, or external Gemini API production throughput.",
+            "error_counts": {}
+          }
+        }
+      },
+      "measurement_type": "in_process_simulated"
+    },
+    "ingestion": {
+      "chunking_throughput": {
+        "stage": "chunking_only",
+        "is_end_to_end_production": false,
+        "documents_total": 3,
+        "documents_successful": 3,
+        "documents_failed": 0,
+        "chunks_produced_total": 3,
+        "elapsed_time_s": 0.001,
+        "documents_per_minute": 173460.54,
+        "chunks_per_second": 2891.01,
+        "dpm_formula": "(documents_successful / elapsed_time_s) * 60.0",
+        "cps_formula": "chunks_produced_total / elapsed_time_s",
+        "disclaimer": "Measurements reflect in-process simulation using synthetic documents, in-memory persistence, and mocked embedding dependencies. They do not represent end-to-end production throughput across distributed Celery workers or live vector databases.",
+        "details": {
+          "chunk_size": 150,
+          "chunk_overlap": 20
+        }
+      },
+      "simulated_ingestion": {
+        "stage": "simulated_ingestion_mocked_embeddings",
+        "is_end_to_end_production": false,
+        "documents_total": 3,
+        "documents_successful": 3,
+        "documents_failed": 0,
+        "chunks_produced_total": 3,
+        "elapsed_time_s": 0.1789,
+        "documents_per_minute": 1006.2,
+        "chunks_per_second": 16.77,
+        "dpm_formula": "(documents_successful / elapsed_time_s) * 60.0",
+        "cps_formula": "chunks_produced_total / elapsed_time_s",
+        "disclaimer": "Measurements reflect in-process simulation using synthetic documents, in-memory persistence, and mocked embedding dependencies. They do not represent end-to-end production throughput across distributed Celery workers or live vector databases.",
+        "details": {}
+      },
+      "duplicate_rejection": {
+        "stage": "upload_deduplication_simulated",
+        "is_end_to_end_production": false,
+        "initial_upload_latency_ms": 58.41,
+        "duplicate_rejection_latency_ms": 9.19,
+        "duplicate_detected": true,
+        "rejection_status_code": 409,
+        "exception_type": "ConflictException",
+        "disclaimer": "Measures in-process SHA-256 checksum calculation and database lookup latency. Does not measure network transfer."
+      },
+      "reprocessing_idempotency": {
+        "stage": "reprocessing_idempotency_simulated",
+        "is_end_to_end_production": false,
+        "document_id": "b6a8a31c-8162-4804-8e77-8c4c0b9ed22f",
+        "pass_durations_ms": [
+          11.58,
+          9.7,
+          10.43
+        ],
+        "pass_chunk_counts": [
+          1,
+          1,
+          1
+        ],
+        "is_idempotent": true,
+        "consistent_chunk_count": 1,
+        "disclaimer": "Measures semantic chunking re-execution consistency and database chunk replacement idempotency without external service overhead."
+      }
+    },
+    "reliability": {
+      "total_scenarios": 6,
+      "passed_scenarios": 6,
+      "failed_scenarios": 0,
+      "elapsed_total_s": 0.0218,
+      "measurement_type": "simulated_fault_injection",
+      "disclaimer": "Fault-injection benchmarks verify fail-open resilience, transaction rollback boundaries, and clean cancellation propagation under simulated failure conditions without asserting timing thresholds.",
+      "results": [
+        {
+          "scenario_name": "redis_cache_outage_fail_open",
+          "fault_type": "redis_connection_error",
+          "expected_behavior": "fail_open_non_blocking",
+          "behavior_verified": true,
+          "elapsed_ms": 1.91,
+          "error_classification": "redis_connection_error",
+          "details": {
+            "get_failed_open_to_none": true,
+            "set_failed_open_to_false": true,
+            "delete_failed_open_to_false": true,
+            "record_latency_failed_open": true
+          },
+          "measurement_type": "simulated_fault_injection"
+        },
+        {
+          "scenario_name": "database_transaction_rollback_on_crash",
+          "fault_type": "database_operational_error",
+          "expected_behavior": "fail_closed_transaction_rollback",
+          "behavior_verified": true,
+          "elapsed_ms": 1.2,
+          "error_classification": "database_error",
+          "details": {
+            "rollback_awaited": true,
+            "commit_prevented": true,
+            "session_closed": true
+          },
+          "measurement_type": "simulated_fault_injection"
+        },
+        {
+          "scenario_name": "tenant_authorization_boundary_fail_closed",
+          "fault_type": "unauthorized_cross_tenant_access",
+          "expected_behavior": "fail_closed_not_found",
+          "behavior_verified": true,
+          "elapsed_ms": 5.78,
+          "error_classification": "permission_denied",
+          "details": {
+            "get_blocked_404": true,
+            "update_blocked_404": true,
+            "delete_blocked_404": true
+          },
+          "measurement_type": "simulated_fault_injection"
+        },
+        {
+          "scenario_name": "tool_timeout_error_classification",
+          "fault_type": "tool_timeout",
+          "expected_behavior": "classify_as_timeout_safe",
+          "behavior_verified": true,
+          "elapsed_ms": 0.03,
+          "error_classification": "timeout",
+          "details": {
+            "classified_category": "timeout"
+          },
+          "measurement_type": "simulated_fault_injection"
+        },
+        {
+          "scenario_name": "agent_cancellation_propagation_and_context_cleanup",
+          "fault_type": "asyncio_cancelled_error",
+          "expected_behavior": "clean_propagation_and_context_reset",
+          "behavior_verified": true,
+          "elapsed_ms": 0.43,
+          "error_classification": "cancelled",
+          "details": {
+            "cancellation_propagated": true,
+            "context_cleaned_up": true
+          },
+          "measurement_type": "simulated_fault_injection"
+        },
+        {
+          "scenario_name": "celery_task_retry_and_exhaustion",
+          "fault_type": "transient_task_failure_and_exhaustion",
+          "expected_behavior": "retry_on_transient_and_mark_failed_on_exhaustion",
+          "behavior_verified": true,
+          "elapsed_ms": 3.13,
+          "error_classification": "transient_worker_retry",
+          "details": {
+            "transient_retry_triggered": true,
+            "retry_exhaustion_handled": true,
+            "permanent_failure_rejected_without_retry": true
+          },
+          "measurement_type": "simulated_fault_injection"
+        }
+      ]
+    }
+  },
+  "estimated_values": {
+    "note": "Estimated values represent projections or theoretical capacity models, kept strictly separated from empirical measurements.",
+    "projected_production_throughput": null,
+    "projected_cloud_monthly_cost": null,
+    "estimates_available": false,
+    "explanation": "No live cloud infrastructure or commercial APIs were probed; theoretical cost and distributed cloud throughput estimates are not synthesized to prevent misleading production expectations."
+  },
+  "limitations_and_reproducibility": {
+    "synthetic_corpus_only": true,
+    "mocked_dependencies": [
+      "Gemini LLM",
+      "Vertex/Embedding API",
+      "Celery Distributed Workers",
+      "Redis Distributed Cluster"
+    ],
+    "in_process_asgi": true,
+    "reproducibility_command": "python -m app.evaluation.benchmark_runner --suite all --output benchmark_report.json",
+    "disclaimer": "All benchmark metrics reflect controlled in-process execution using synthetic datasets, in-memory SQLite persistence, and mocked external dependencies (Gemini LLM, embedding APIs, Celery workers, and Redis broker). Measurements characterize computational logic, tokenization throughput, serialization overhead, and error-handling resilience, but do not represent production wide-area network latency or distributed cloud cluster capacity."
+  }
+}

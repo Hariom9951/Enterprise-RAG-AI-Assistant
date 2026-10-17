@@ -14,10 +14,11 @@ import {
   ChevronDown,
   ChevronRight,
   LogOut,
-  X
+  X,
+  Brain
 } from "lucide-react";
-import { userApi, dashboardApi, UserResponse, DashboardData } from "@/lib/api";
-import { clearTokens } from "@/lib/auth";
+import { userApi, dashboardApi, authApi, UserResponse, DashboardData } from "@/lib/api";
+import { clearTokens, getRefreshToken } from "@/lib/auth";
 
 interface AppSidebarProps {
   onNewChat?: () => void;
@@ -58,9 +59,18 @@ export default function AppSidebar({
     };
   }, []);
 
-  const handleLogout = () => {
-    clearTokens();
-    router.push("/login");
+  const handleLogout = async () => {
+    const refreshToken = getRefreshToken();
+    try {
+      if (refreshToken) {
+        await authApi.logout({ refresh_token: refreshToken });
+      }
+    } catch {
+      // Graceful fallback: always clear local tokens even if server logout fails
+    } finally {
+      clearTokens();
+      router.push("/login");
+    }
   };
 
   // Explicit route matching for high visual accuracy
@@ -101,11 +111,18 @@ export default function AppSidebar({
       isActive: pathname === "/dashboard" || pathname.startsWith("/dashboard/"),
     },
     {
+      id: "memories",
+      href: "/settings/memory",
+      label: "Memories",
+      icon: Brain,
+      isActive: pathname === "/settings/memory" || pathname.startsWith("/settings/memory"),
+    },
+    {
       id: "settings",
       href: "/settings",
       label: "Settings",
       icon: Settings,
-      isActive: pathname === "/settings" || pathname.startsWith("/settings/"),
+      isActive: pathname === "/settings",
     },
   ];
 

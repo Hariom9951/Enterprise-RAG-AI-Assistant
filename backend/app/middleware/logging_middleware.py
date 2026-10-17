@@ -15,11 +15,85 @@ Log output example:
 import time
 import uuid
 from collections.abc import Callable
+from urllib.parse import parse_qsl, quote_plus
 
 from fastapi import Request, Response
 from loguru import logger
+from starlette.datastructures import QueryParams
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
+
+from app.config.settings import settings
+from app.middleware.rate_limit import get_client_ip
+
+SENSITIVE_QUERY_PARAMS = frozenset(
+    {
+        "code",
+        "state",
+        "token",
+        "access_token",
+        "refresh_token",
+        "secret",
+        "client_secret",
+        "api_key",
+        "apikey",
+        "password",
+        "q",
+        "query",
+    }
+)
+
+REDACTED_VALUE = "[REDACTED]"
+
+
+def sanitize_query_params(query: str | QueryParams | None) -> str | None:
+    """
+    Sanitize query parameters by redacting sensitive values case-insensitively.
+
+    Preserves parameter names and non-sensitive values.
+    Handles repeated parameters and malformed inputs safely.
+    Returns None if query is empty or contains no parameters.
+    """
+    if not query:
+        return None
+
+    try:
+        if isinstance(query, QueryParams):
+            items = query.multi_items()
+        elif isinstance(query, str):
+            raw = query.lstrip("?")
+            if not raw.strip():
+                return None
+            items = parse_qsl(raw, keep_blank_values=True)
+        else:
+            raw = str(query).lstrip("?")
+            if not raw.strip():
+                return None
+            items = parse_qsl(raw, keep_blank_values=True)
+
+        if not items:
+            return None
+
+        sanitized_parts: list[str] = []
+        for key, val in items:
+            key_clean = key.strip()
+            key_lower = key_clean.lower()
+
+            is_sensitive = (
+                key_lower in SENSITIVE_QUERY_PARAMS
+                or key_lower.endswith(("_token", "_secret", "_key", "_password"))
+            )
+
+            if is_sensitive:
+                sanitized_parts.append(f"{quote_plus(key_clean)}={REDACTED_VALUE}")
+            else:
+                sanitized_parts.append(f"{quote_plus(key_clean)}={quote_plus(val)}")
+
+        return "&".join(sanitized_parts)
+
+    except Exception:
+        # Never leak raw query string on unexpected parsing failure
+        return "[MALFORMED_QUERY]"
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -48,6 +122,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request_id = str(uuid.uuid4())
         start_time = time.perf_counter()
 
+        # Sanitize query parameters and resolve client IP before log record construction
+        sanitized_query = sanitize_query_params(request.query_params)
+        client_ip = get_client_ip(request, settings.trusted_proxies)
+
         # Log the incoming request.
         logger.info(
             f"--> {request.method} {request.url.path}",
@@ -56,8 +134,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "request_id": request_id,
                 "method": request.method,
                 "path": request.url.path,
-                "query": str(request.query_params) or None,
-                "client_ip": request.client.host if request.client else "unknown",
+                "query": sanitized_query,
+                "client_ip": client_ip,
             },
         )
 

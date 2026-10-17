@@ -11,13 +11,19 @@ from app.models.agent_models import AgentRun, AgentToolCall  # noqa: F401
 from app.models.chat_models import ChatMessage, ChatSession  # noqa: F401
 from app.models.chunk import Chunk  # noqa: F401
 from app.models.document import Document  # noqa: F401
+from app.models.oauth_models import UserConnectedApp  # noqa: F401
 from app.models.processed_document import ProcessedDocument  # noqa: F401
 from app.models.rag_query import RagQuery  # noqa: F401
+from app.models.refresh_token import RefreshToken  # noqa: F401
 from app.models.search_query import SearchQuery  # noqa: F401
 from app.models.user import User  # noqa: F401
+from app.models.user_memory import UserMemory  # noqa: F401
 
 __all__ = [
     "User",
+    "RefreshToken",
+    "UserConnectedApp",
+    "UserMemory",
     "Document",
     "ProcessedDocument",
     "Chunk",

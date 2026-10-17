@@ -12,7 +12,8 @@ import {
   Database,
   Search,
   Layers,
-  Sparkles
+  Sparkles,
+  Brain
 } from "lucide-react";
 import { CitationItem } from "@/lib/api";
 
@@ -32,6 +33,35 @@ interface AppRightPanelProps {
   maxTokens: number;
   setMaxTokens: (m: number) => void;
   onScrollToCitation?: (idx: number) => void;
+}
+
+/**
+ * Validates a citation URL for safe external linking.
+ * Only absolute https:// URLs are permitted.
+ * Unsafe schemes (javascript:, data:, file:), protocol-relative URLs (//),
+ * http://, malformed, or empty values are rejected and return null.
+ */
+export function getSafeCitationUrl(url?: string | null): string | null {
+  if (!url || typeof url !== "string") {
+    return null;
+  }
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.startsWith("//")) {
+    return null;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "https:" && parsed.hostname) {
+      return parsed.href;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function isSafeCitationUrl(url?: string | null): boolean {
+  return getSafeCitationUrl(url) !== null;
 }
 
 export default function AppRightPanel({
@@ -70,7 +100,14 @@ export default function AppRightPanel({
   };
 
   // Helper for document icon
-  const getDocIcon = (filename: string) => {
+  const getDocIcon = (filename: string, isMemory?: boolean) => {
+    if (isMemory) {
+      return (
+        <div className="w-7 h-7 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+          <Brain size={14} />
+        </div>
+      );
+    }
     const lower = filename.toLowerCase();
     if (lower.endsWith(".pdf")) {
       return (
@@ -158,27 +195,60 @@ export default function AppRightPanel({
                       </p>
                     </div>
                   ) : (
-                    citations.map((c) => (
-                      <div
-                        key={c.citation_index}
-                        onClick={() => onScrollToCitation && onScrollToCitation(c.citation_index)}
-                        className="p-3 bg-slate-50/70 hover:bg-slate-100/80 border border-slate-200/80 rounded-xl transition-all cursor-pointer group"
-                      >
-                        <div className="flex items-start gap-2.5">
-                          {getDocIcon(c.document_title)}
-                          <div className="flex-1 min-w-0">
-                            <h4
-                              className="text-xs font-semibold text-slate-900 truncate group-hover:text-blue-600 transition-colors"
-                              title={c.document_title}
-                            >
-                              {c.document_title}
-                            </h4>
-                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5 font-medium">
-                              <span>Page {c.page_number}</span>
+                    citations.map((c) => {
+                      const isMemory = Boolean(c.is_user_memory || c.provider === "user_memory");
+                      const safeUrl = isMemory ? null : getSafeCitationUrl(c.source_url);
+                      return (
+                        <div
+                          key={c.citation_index}
+                          onClick={() => onScrollToCitation && onScrollToCitation(c.citation_index)}
+                          className="p-3 bg-slate-50/70 hover:bg-slate-100/80 border border-slate-200/80 rounded-xl transition-all cursor-pointer group"
+                        >
+                          <div className="flex items-start gap-2.5">
+                            {getDocIcon(c.document_title, isMemory)}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <h4
+                                  className="text-xs font-semibold text-slate-900 truncate group-hover:text-blue-600 transition-colors"
+                                  title={c.document_title}
+                                >
+                                  {c.document_title}
+                                </h4>
+                                {safeUrl && (
+                                  <a
+                                    href={safeUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-slate-400 hover:text-blue-600 transition-colors shrink-0 p-0.5"
+                                    title="Open canonical source link"
+                                  >
+                                    <ArrowUpRight size={13} />
+                                  </a>
+                                )}
+                              </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5 font-medium flex-wrap">
+                              {isMemory ? (
+                                <span className="bg-purple-50 text-purple-700 border border-purple-200/80 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                  Stored User Memory
+                                </span>
+                              ) : c.provider && c.provider !== "internal_rag" ? (
+                                <span className="bg-blue-50 text-blue-700 px-1 py-0.2 rounded text-[10px] font-bold uppercase">
+                                  {c.provider === "google_drive" ? "Drive" : c.provider}
+                                </span>
+                              ) : (
+                                <span>Page {c.page_number ?? 1}</span>
+                              )}
                               <span>•</span>
                               <span className="text-blue-600 font-semibold">
                                 {formatMatch(c.score)}
                               </span>
+                              {isMemory && c.provenance === "user_explicit" && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-slate-400 text-[10px]">You saved this</span>
+                                </>
+                              )}
                             </div>
                             <p className="mt-1.5 text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
                               &ldquo;{c.text}&rdquo;
@@ -186,8 +256,9 @@ export default function AppRightPanel({
                           </div>
                         </div>
                       </div>
-                    ))
-                  )}
+                    );
+                  })
+                )}
 
                   {citations.length > 0 && (
                     <Link
@@ -431,6 +502,68 @@ export default function AppRightPanel({
               <p className="text-[11px] text-slate-500">
                 Combines full-text lexical ranking with semantic embeddings.
               </p>
+            </div>
+
+            {/* ── Personal-App Connectors (Phase 5.2) ── */}
+            <div className="pt-2 border-t border-slate-200">
+              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-2">
+                Connected Personal Apps
+              </span>
+              <div className="space-y-2">
+                <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-lg">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-semibold text-slate-800 text-[11px]">Gmail</span>
+                    <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-bold uppercase">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Read-only message search via OAuth vault (gmail.readonly).
+                  </p>
+                </div>
+
+                <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-lg">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-semibold text-slate-800 text-[11px]">Google Drive</span>
+                    <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-bold uppercase">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    File metadata and safe text extracts (drive.readonly).
+                  </p>
+                </div>
+
+                <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-lg">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-semibold text-slate-800 text-[11px]">GitHub</span>
+                    <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-bold uppercase">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Read-only repository, issue, and pull request search.
+                  </p>
+                </div>
+
+                <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-lg">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-semibold text-slate-800 text-[11px]">LinkedIn (Optional)</span>
+                    <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.2 rounded font-bold uppercase">
+                      OIDC Basic
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Basic profile verification via OIDC userinfo. Live feed search is restricted by LinkedIn; manual import is provided as fallback.
+                  </p>
+                </div>
+
+                <div className="p-2 bg-slate-100/60 border border-slate-200/60 rounded-lg">
+                  <span className="text-[10px] text-slate-400 font-medium block">
+                    Notion & Jira: Deactivated in configuration.
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         )}
